@@ -32,8 +32,10 @@ there.
 Grab the installer from the [Releases](../../releases) page and run it. It
 installs per-user, so there is no UAC prompt.
 
-Windows SmartScreen will warn about an unknown publisher until the build is
-signed with a code-signing certificate — see [Code signing](#code-signing).
+Releases are not code-signed, so Windows SmartScreen will show
+**"Windows protected your PC"**. Click **More info**, then **Run anyway**. If
+you would rather verify before trusting it, every release is scanned on
+VirusTotal and the source of what you are installing is right here.
 
 ### Default hotkeys
 
@@ -108,94 +110,20 @@ cargo tauri dev
 CI builds the installer on every push and attaches it to the run. Pushing a tag
 matching `v*` publishes a GitHub release.
 
-### Project layout
-
-```
-crates/capture/     Screen capture, replay buffer, audio, screenshots
-  ffmpeg.rs         Encoder pipeline candidates and the runtime probe
-  ring.rs           Segment ring buffer and clip extraction
-  audio.rs          WASAPI loopback and microphone capture
-  sysprobe.rs       Monitor enumeration, FiveM detection
-src-tauri/          Desktop app: commands, hotkeys, tray, uploads
-ui/                 Front end — plain HTML/CSS/JS, no build step
-tools/              Icon generator, ffmpeg fetcher
-```
-
-The capture crate is deliberately separate from the app so its Windows-specific
-code can be type-checked from any platform:
-
-```bash
-rustup target add x86_64-pc-windows-gnu
-cargo check --target x86_64-pc-windows-gnu -p fivemclip-capture
-```
-
-### How the replay buffer works
-
-ffmpeg writes a continuous stream of two-second MPEG-TS segments into a ring
-directory, recycling filenames via `-segment_wrap`. Saving a clip picks the
-newest segments by modification time and concatenates them with `-c copy`.
-
-MPEG-TS rather than MP4 is the important detail: TS survives being read while it
-is still being written, so the seconds that matter most — the ones still in
-flight when you hit the key — are recoverable.
-
-Audio needs care too. A WASAPI loopback client returns *no frames at all* while
-nothing is playing, so `audio.rs` tracks how far behind real time the stream has
-fallen and injects silence to close the gap. Without that, a quiet minute would
-shorten the audio track by a minute and desync everything after it.
+See [docs/architecture.md](docs/architecture.md) for the project layout, how the
+replay buffer works, and how to type-check the Windows-only code from any
+platform.
 
 ## Code signing
 
-Releases are unsigned. That means two things, and the second is the one people
-forget:
+Releases are unsigned. Signing is worth doing eventually - reputation
+accumulates on a certificate and carries across releases, where an unsigned
+build starts from zero every time, and signing also cuts down antivirus false
+positives.
 
-- **SmartScreen** shows "Windows protected your PC" on install. Reputation is
-  tracked per-certificate *and* per-file-hash, so an unsigned build starts from
-  zero on every single release. A signed build accumulates reputation on the
-  certificate and carries it across versions.
-- **Antivirus heuristics.** An unsigned binary that captures the screen, records
-  audio, spawns a subprocess and writes files looks a lot like a RAT to a
-  heuristic scanner. Expect occasional false positives.
-
-### Why there is no cheap option any more
-
-Since June 2023 the CA/Browser Forum requires *every* code signing private key
-to live on FIPS 140-2 Level 2 hardware. The old $80 `.pfx` file no longer exists
-at any validation level.
-
-And a USB token cannot be plugged into a GitHub Actions runner. So signing in CI
-means a cloud signing service, not a token in a drawer:
-
-| | Cost | Company required | Clears SmartScreen |
-| --- | --- | --- | --- |
-| Unsigned | free | no | no |
-| Azure Trusted Signing | ~$10/mo | yes, with verifiable history | over time |
-| OV + cloud HSM | $250-500/yr | usually | over time |
-| EV + cloud HSM | $350-700/yr | yes | immediately |
-
-Only EV removes the warning on day one. Everything else earns trust through
-download volume.
-
-### Turning it on
-
-`.github/workflows/build.yml` carries a commented-out Azure Trusted Signing
-block. Add the secrets it names, uncomment it, and set `signCommand` under
-`bundle.windows` in `tauri.conf.json`. Keep the timestamp URL - without
-timestamping, every signature becomes invalid the day the certificate expires,
-retroactively breaking installers people have already downloaded.
-
-### Until then
-
-- Put a screenshot of the SmartScreen dialog in your install instructions with
-  "click More info, then Run anyway". Removing the surprise removes most of the
-  friction.
-- Upload each release to VirusTotal and link the result. A clean scan across 70
-  engines is worth more to a sceptical user than a certificate they cannot
-  inspect anyway.
-- Report false positives to Microsoft's malware analysis portal; turnaround is
-  usually a day or two.
-- Keeping the repository public is itself a trust argument. For a screen
-  recorder, "you can read exactly what it does" carries real weight.
+It is not as simple as buying a certificate any more, and the options are
+genuinely constrained by CI. The reasoning, the costs, and how to switch it on
+are in [docs/signing.md](docs/signing.md).
 
 ## Troubleshooting
 
