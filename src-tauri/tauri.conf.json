@@ -31,7 +31,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,8 +48,15 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English"]
+        "languages": [
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
       }
-    }
+    },
+    "licenseFile": "../LICENSE"
   }
 }

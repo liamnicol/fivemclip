@@ -43,6 +43,10 @@ pub struct Settings {
     pub only_while_fivem_running: bool,
     pub start_minimized: bool,
     pub autostart: bool,
+    /// Cleared until the user has been through first-run setup. The replay
+    /// buffer stays off until then: writing hundreds of megabytes to a folder
+    /// nobody has chosen yet is not a good first impression.
+    pub setup_complete: bool,
 
     pub hotkey_save_clip: String,
     pub hotkey_screenshot: String,
@@ -77,6 +81,7 @@ impl Default for Settings {
             only_while_fivem_running: true,
             start_minimized: false,
             autostart: false,
+            setup_complete: false,
             hotkey_save_clip: "F9".into(),
             hotkey_screenshot: "F10".into(),
             hotkey_toggle_buffer: "Ctrl+F9".into(),

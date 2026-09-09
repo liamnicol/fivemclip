@@ -226,6 +226,52 @@
       </section>
     </main>
 
+    <section class="setup" id="setup" hidden>
+      <div class="setup-card">
+        <div class="setup-mark" aria-hidden="true"></div>
+        <h1>FiveMClip</h1>
+        <p class="setup-lede">
+          Recording runs quietly in the background. When something worth keeping
+          happens, press a key and the last few minutes are saved to your drive.
+        </p>
+
+        <label class="field">
+          <span>Where should clips be saved?</span>
+          <span class="row">
+            <input type="text" id="setup_output_dir" readonly />
+            <button type="button" class="btn btn-ghost" id="setup-browse">Change</button>
+          </span>
+          <small class="muted" id="setup_disk"></small>
+        </label>
+
+        <label class="field">
+          <span>How much should it remember?</span>
+          <span class="row">
+            <input type="range" id="setup_buffer" min="30" max="600" step="30" />
+            <output id="setup_buffer_out"></output>
+          </span>
+          <small class="muted" id="setup_estimate"></small>
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" id="setup_autostart" checked />
+          <span>Start with Windows and sit in the tray</span>
+        </label>
+
+        <div class="setup-keys">
+          <div><kbd>F9</kbd><span>Save the last few minutes</span></div>
+          <div><kbd>F10</kbd><span>Screenshot</span></div>
+        </div>
+
+        <p class="muted setup-note">
+          Recording starts on its own when FiveM launches, and stops when it
+          closes. Everything is changeable later in Settings.
+        </p>
+
+        <button class="btn btn-primary btn-wide" id="setup-done">Get started</button>
+      </div>
+    </section>
+
     <div id="toast" class="toast" hidden></div>
     <script src="main.js"></script>
   </body>

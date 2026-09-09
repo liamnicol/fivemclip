@@ -432,10 +432,82 @@ $("settings-form").addEventListener("submit", async (event) => {
   await persistSettings();
 });
 
+/* ---------------- first run ---------------- */
+
+// The setup screen writes into the same Settings object as everything else; it
+// is a friendlier front door to three fields, not a separate configuration.
+async function refreshSetupEstimate() {
+  const seconds = Number($("setup_buffer").value);
+  const needed = ((settings.bitrate_kbps * 1000 * seconds) / 8) * 1.1;
+  $("setup_buffer_out").textContent = formatDuration(seconds);
+  $("setup_estimate").textContent = `Keeps about ${formatBytes(needed)} on disk while running.`;
+
+  const dir = $("setup_output_dir").value;
+  const free = dir ? await invoke("disk_free", { path: dir }).catch(() => null) : null;
+  const label = $("setup_disk");
+  if (free === null || free === undefined) {
+    label.textContent = "";
+    label.classList.remove("tight");
+    return;
+  }
+  label.textContent = `${formatBytes(free)} free on this drive.`;
+  // Leave real headroom: a drive with only the buffer's worth of space left is
+  // a drive about to cause problems for everything else on it.
+  label.classList.toggle("tight", free < needed * 3);
+}
+
+$("setup_buffer").addEventListener("input", refreshSetupEstimate);
+
+$("setup-browse").addEventListener("click", async () => {
+  const chosen = await dialog.open({ directory: true, title: "Where should clips be saved?" });
+  if (chosen) {
+    $("setup_output_dir").value = chosen;
+    refreshSetupEstimate();
+  }
+});
+
+$("setup-done").addEventListener("click", async () => {
+  const button = $("setup-done");
+  button.disabled = true;
+  try {
+    const saved = await call("save_settings", {
+      settings: {
+        ...settings,
+        output_dir: $("setup_output_dir").value,
+        buffer_seconds: Number($("setup_buffer").value),
+        autostart: $("setup_autostart").checked,
+        setup_complete: true,
+      },
+    });
+    applySettings(saved);
+    document.body.classList.remove("is-setup");
+    $("setup").hidden = true;
+    // The watchdog will pick it up within a few seconds, but starting here
+    // means the buffer meter moves immediately instead of looking broken.
+    await invoke("start_buffer").catch(() => {});
+    toast("Ready — press F9 whenever something worth keeping happens");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function showSetup() {
+  $("setup_output_dir").value = settings.output_dir;
+  $("setup_buffer").value = settings.buffer_seconds;
+  $("setup_autostart").checked = settings.autostart;
+  document.body.classList.add("is-setup");
+  $("setup").hidden = false;
+  refreshSetupEstimate();
+}
+
 /* ---------------- boot ---------------- */
 
 async function boot() {
   applySettings(await invoke("get_settings"));
+
+  if (!settings.setup_complete) {
+    showSetup();
+  }
 
   const monitors = await invoke("list_monitors").catch(() => []);
   const select = $("monitor_index");

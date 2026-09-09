@@ -245,3 +245,85 @@ a { color: #7aa7ff; }
   .cards { grid-template-columns: 1fr; }
   .tabs { gap: 0; }
 }
+
+/* ---------- first run ---------- */
+
+/* The setup screen owns the window outright: no tabs, no tray-bound state to
+   discover, one decision per line. */
+body.is-setup .topbar,
+body.is-setup main { display: none; }
+
+.setup {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.setup-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px var(--panel), 0 0 0 8px var(--text);
+  margin: 4px auto 22px;
+}
+
+.setup-card h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  text-align: center;
+  letter-spacing: -0.2px;
+}
+
+.setup-lede {
+  margin: 0 0 26px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.setup-card .field { margin-bottom: 22px; }
+
+.setup-keys {
+  display: grid;
+  gap: 8px;
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.setup-keys div { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.setup-keys span { color: var(--muted); }
+
+kbd {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font: 600 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  min-width: 38px;
+  text-align: center;
+}
+
+.setup-note { font-size: 12px; line-height: 1.6; margin-bottom: 22px; }
+
+.btn-wide { width: 100%; padding: 12px; font-size: 15px; }
+
+/* Warn before someone picks a buffer their drive cannot hold. */
+.tight { color: var(--warn); }

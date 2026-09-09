@@ -122,6 +122,23 @@ pub fn monitors() -> Vec<MonitorInfo> {
 /// FiveM spawns several processes; the launcher is `FiveM.exe` and the actual
 /// game is `FiveM_b<build>_GTAProcess.exe`. Matching the prefix covers both,
 /// plus RedM for anyone running that.
+/// Bytes free on whichever volume holds `path`.
+///
+/// Used to sanity-check the replay buffer size against reality: a 30 minute
+/// buffer at 60 Mbit is 13 GB, and finding that out by filling someone's drive
+/// is the wrong way round.
+pub fn free_space_bytes(path: &std::path::Path) -> Option<u64> {
+    use sysinfo::Disks;
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .list()
+        .iter()
+        // Longest matching mount point wins, so D:\Games beats D:\ .
+        .filter(|d| path.starts_with(d.mount_point()))
+        .max_by_key(|d| d.mount_point().as_os_str().len())
+        .map(|d| d.available_space())
+}
+
 /// Does this process name belong to the game?
 ///
 /// Split out from the process scan so it can be tested, because the obvious

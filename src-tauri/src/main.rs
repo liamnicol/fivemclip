@@ -38,6 +38,7 @@ fn main() {
             commands::start_buffer,
             commands::stop_buffer,
             commands::list_monitors,
+            commands::disk_free,
             commands::reprobe,
             commands::save_clip,
             commands::take_screenshot,
@@ -179,6 +180,12 @@ fn spawn_watchdog(app: tauri::AppHandle) {
 
         let state = app.state::<AppState>();
         let settings = state.settings.lock().clone();
+
+        // Nothing runs until the user has been through first-run setup.
+        if !settings.setup_complete {
+            continue;
+        }
+
         let manually_stopped = state.manually_stopped.load(Ordering::Relaxed);
         let running = state
             .recorder

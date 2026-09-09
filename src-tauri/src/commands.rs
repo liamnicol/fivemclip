@@ -106,6 +106,22 @@ pub fn stop_buffer(state: State<AppState>) {
     state.stop_buffer(true);
 }
 
+/// Free space on the volume a candidate output folder lives on. Takes the path
+/// rather than reading settings, so the setup screen can check a folder before
+/// it has been saved.
+#[tauri::command]
+pub fn disk_free(path: String) -> Option<u64> {
+    let path = PathBuf::from(path);
+    // The folder itself may not exist yet; walk up until something does.
+    let mut probe = path.as_path();
+    loop {
+        if probe.exists() {
+            return sysprobe::free_space_bytes(probe);
+        }
+        probe = probe.parent()?;
+    }
+}
+
 #[tauri::command]
 pub fn list_monitors() -> Vec<MonitorInfo> {
     sysprobe::monitors()
