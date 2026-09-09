@@ -45,7 +45,14 @@ try {
 
     # A build without ddagrab would silently fall back to the slow GDI capture
     # path on every user's machine, so fail loudly here instead.
-    $filters = & $exe -hide_banner -filters 2>&1 | Out-String
+    # Relaxed scope: ffmpeg writes to stderr routinely, and under
+    # ErrorActionPreference=Stop that would become a terminating error.
+    $filters = $(
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { & $exe -hide_banner -filters 2>&1 | Out-String }
+        finally { $ErrorActionPreference = $previous }
+    )
     if ($filters -notmatch 'ddagrab') {
         throw "This ffmpeg build has no ddagrab filter - screen capture would be unusably slow."
     }

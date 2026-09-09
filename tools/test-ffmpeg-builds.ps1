@@ -25,6 +25,26 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# ffmpeg writes all of its normal output to stderr, and under
+# $ErrorActionPreference = 'Stop' PowerShell turns any native stderr write into
+# a terminating NativeCommandError. So native calls get their own relaxed scope
+# and are judged on their exit code instead.
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory)][string]$Exe,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $Exe @Arguments 2>&1 | Out-String
+        [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 $release = Invoke-RestMethod 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest'
 
 $candidates = $release.assets | Where-Object {
@@ -63,18 +83,22 @@ foreach ($asset in $candidates) {
     $exe = (Get-ChildItem $dest -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName
     if (-not $exe) { Write-Host '  no ffmpeg.exe in archive'; continue }
 
-    $version = (& $exe -hide_banner -version 2>&1 | Select-Object -First 1) -replace '^ffmpeg version ', ''
+    $version = ((Invoke-Native $exe @('-hide_banner', '-version')).Output -split "`r?`n" |
+        Select-Object -First 1) -replace '^ffmpeg version ', ''
     Write-Host "  version:  $version"
 
     # ddagrab is non-negotiable: without it, capture falls back to GDI and costs
     # the user frames in-game.
-    $hasDda = (& $exe -hide_banner -filters 2>&1 | Select-String -Quiet 'ddagrab')
+    $hasDda = (Invoke-Native $exe @('-hide_banner', '-filters')).Output -match 'ddagrab'
     Write-Host "  ddagrab:  $(if ($hasDda) { 'yes' } else { 'NO' })"
 
     # A synthetic source, so this tests the encoder and nothing else.
-    $encodeLog = & $exe -hide_banner -f lavfi -i testsrc2=s=640x360:r=30 -t 0.5 `
-        -c:v h264_nvenc -f null - 2>&1 | Out-String
-    $nvencOk = $LASTEXITCODE -eq 0
+    $encode = Invoke-Native $exe @(
+        '-hide_banner', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30',
+        '-t', '0.5', '-c:v', 'h264_nvenc', '-f', 'null', '-'
+    )
+    $encodeLog = $encode.Output
+    $nvencOk = $encode.ExitCode -eq 0
     Write-Host "  nvenc:    $(if ($nvencOk) { 'WORKS' } else { 'fails' })" -ForegroundColor $(if ($nvencOk) { 'Green' } else { 'Yellow' })
     if (-not $nvencOk) {
         $encodeLog -split "`r?`n" |
