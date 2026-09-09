@@ -1,0 +1,5 @@
+target/
+src-tauri/gen/
+src-tauri/bin/ffmpeg.exe
+src-tauri/bin/*.exe
+*.log

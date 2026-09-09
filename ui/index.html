@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FiveMClip</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span>FiveMClip</span>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-view="record" role="tab">Record</button>
+        <button class="tab" data-view="library" role="tab">Library</button>
+        <button class="tab" data-view="settings" role="tab">Settings</button>
+      </nav>
+      <div class="status" id="status-pill">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Starting…</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="view is-active" id="view-record">
+        <div id="alerts"></div>
+
+        <div class="hero">
+          <div class="hero-meter">
+            <div class="meter"><div class="meter-fill" id="buffer-fill"></div></div>
+            <div class="meter-labels">
+              <strong id="buffer-held">0s</strong>
+              <span id="buffer-target">buffered</span>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-lg" id="btn-clip">
+              Save clip
+              <small id="hint-clip">F9</small>
+            </button>
+            <button class="btn btn-lg" id="btn-shot">
+              Screenshot
+              <small id="hint-shot">F10</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <h3>Replay buffer</h3>
+            <p class="muted" id="buffer-summary">—</p>
+            <button class="btn" id="btn-toggle">Stop buffer</button>
+          </div>
+          <div class="card">
+            <h3>Capture method</h3>
+            <p class="muted" id="pipeline-name">—</p>
+            <button class="btn btn-ghost" id="btn-reprobe">Re-test this PC</button>
+          </div>
+          <div class="card">
+            <h3>On disk</h3>
+            <p class="muted" id="disk-summary">—</p>
+            <button class="btn btn-ghost" id="btn-folder">Open folder</button>
+          </div>
+        </div>
+
+        <div id="probe-report" class="probe" hidden></div>
+      </section>
+
+      <section class="view" id="view-library">
+        <div class="library-head">
+          <div class="filters">
+            <button class="chip is-active" data-filter="all">All</button>
+            <button class="chip" data-filter="clip">Clips</button>
+            <button class="chip" data-filter="screenshot">Screenshots</button>
+          </div>
+          <button class="btn btn-ghost" id="btn-refresh">Refresh</button>
+        </div>
+        <div class="grid" id="library-grid"></div>
+        <p class="empty" id="library-empty" hidden>
+          Nothing saved yet. Press your clip hotkey while FiveM is running.
+        </p>
+      </section>
+
+      <section class="view" id="view-settings">
+        <form id="settings-form">
+          <fieldset>
+            <legend>Recording</legend>
+
+            <label class="field">
+              <span>Replay buffer length</span>
+              <span class="row">
+                <input type="range" id="buffer_seconds" min="15" max="900" step="15" />
+                <output id="buffer_seconds_out"></output>
+              </span>
+              <small id="buffer_estimate" class="muted"></small>
+            </label>
+
+            <label class="field">
+              <span>Frame rate</span>
+              <select id="fps">
+                <option value="30">30 fps</option>
+                <option value="60">60 fps</option>
+                <option value="120">120 fps</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Video bitrate</span>
+              <span class="row">
+                <input type="range" id="bitrate_kbps" min="4000" max="80000" step="1000" />
+                <output id="bitrate_out"></output>
+              </span>
+            </label>
+
+            <label class="field">
+              <span>Monitor</span>
+              <span class="row">
+                <select id="monitor_index"></select>
+                <button type="button" class="btn btn-ghost" id="btn-preview">Test</button>
+              </span>
+              <small class="muted">
+                Not sure which is which? Hit Test — it saves a screenshot from the
+                selected monitor.
+              </small>
+            </label>
+
+            <label class="checkbox">
+              <input type="checkbox" id="capture_cursor" />
+              <span>Include the mouse cursor</span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Audio</legend>
+            <label class="field">
+              <span>Microphone</span>
+              <select id="mic_mode">
+                <option value="off">Don't record my mic</option>
+                <option value="mixed">Mix my mic into the clip</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Game &amp; Discord volume</span>
+              <span class="row">
+                <input type="range" id="system_gain_db" min="-20" max="20" step="1" />
+                <output id="system_gain_out"></output>
+              </span>
+            </label>
+            <label class="field" id="mic-gain-field">
+              <span>Microphone volume</span>
+              <span class="row">
+                <input type="range" id="mic_gain_db" min="-20" max="20" step="1" />
+                <output id="mic_gain_out"></output>
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Hotkeys</legend>
+            <label class="field">
+              <span>Save clip</span>
+              <input type="text" class="hotkey" id="hotkey_save_clip" readonly />
+            </label>
+            <label class="field">
+              <span>Screenshot</span>
+              <input type="text" class="hotkey" id="hotkey_screenshot" readonly />
+            </label>
+            <label class="field">
+              <span>Toggle buffer</span>
+              <input type="text" class="hotkey" id="hotkey_toggle_buffer" readonly />
+            </label>
+            <small class="muted">Click a box, then press the keys you want.</small>
+          </fieldset>
+
+          <fieldset>
+            <legend>Screenshots &amp; sharing</legend>
+            <label class="checkbox">
+              <input type="checkbox" id="screenshot_jpeg" />
+              <span>Save screenshots as JPEG (smaller, uploads faster)</span>
+            </label>
+            <label class="field">
+              <span>ImgBB API key</span>
+              <input type="password" id="imgbb_api_key" placeholder="Paste your key" autocomplete="off" />
+              <small class="muted">
+                Free from
+                <a href="#" data-external="https://api.imgbb.com/">api.imgbb.com</a>.
+                Yours alone — it never leaves this PC except to ImgBB.
+              </small>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="imgbb_auto_upload" />
+              <span>Upload every screenshot automatically and copy the link</span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Behaviour</legend>
+            <label class="checkbox">
+              <input type="checkbox" id="only_while_fivem_running" />
+              <span>Only record while FiveM is running</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="autostart" />
+              <span>Start with Windows</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="start_minimized" />
+              <span>Start hidden in the tray</span>
+            </label>
+            <label class="field">
+              <span>Save clips to</span>
+              <span class="row">
+                <input type="text" id="output_dir" readonly />
+                <button type="button" class="btn btn-ghost" id="btn-browse">Change</button>
+              </span>
+            </label>
+          </fieldset>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save settings</button>
+            <span class="muted" id="settings-saved" hidden>Saved</span>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="main.js"></script>
+  </body>
+</html>
