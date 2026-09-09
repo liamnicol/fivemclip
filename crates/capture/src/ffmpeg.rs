@@ -258,14 +258,67 @@ impl Pipeline {
         if out.status.success() {
             Ok(())
         } else {
-            let err = String::from_utf8_lossy(&out.stderr);
-            Err(err
-                .lines()
-                .last()
-                .unwrap_or("unknown error")
-                .trim()
-                .to_string())
+            Err(explain(&String::from_utf8_lossy(&out.stderr)))
         }
+    }
+}
+
+/// Pull the cause out of ffmpeg's stderr.
+///
+/// Taking the last line is the obvious thing to do and it is wrong: ffmpeg
+/// signs off with the same generic muxer complaint whatever went wrong
+/// ("Nothing was written into output file..."), so every failure reads
+/// identically and the actual reason - a rejected pixel format, an encoder the
+/// driver will not open - sits several lines above it, unread.
+pub fn explain(stderr: &str) -> String {
+    /// Always present on failure, never says why.
+    const TRAILERS: [&str; 3] = [
+        "Nothing was written into output file",
+        "Conversion failed",
+        "Error opening output file",
+    ];
+    /// Marks a line as diagnosing something rather than narrating.
+    const SIGNALS: [&str; 10] = [
+        "error",
+        "impossible",
+        "cannot",
+        "could not",
+        "unable",
+        "failed",
+        "invalid",
+        "not supported",
+        "no such",
+        "unknown",
+    ];
+
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| !TRAILERS.iter().any(|t| l.contains(t)))
+        .collect();
+
+    let diagnostic: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|l| {
+            let lower = l.to_ascii_lowercase();
+            SIGNALS.iter().any(|s| lower.contains(s))
+        })
+        .take(3)
+        .collect();
+
+    if !diagnostic.is_empty() {
+        return diagnostic.join(" / ");
+    }
+
+    // Nothing self-identified as an error, but the tail is still more use than
+    // the boilerplate we stripped.
+    let tail: Vec<&str> = lines.iter().rev().take(2).rev().copied().collect();
+    if tail.is_empty() {
+        "ffmpeg failed without saying why".to_string()
+    } else {
+        tail.join(" / ")
     }
 }
 
@@ -409,6 +462,43 @@ mod tests {
             .position(|a| a == "-g")
             .map(|i| args[i + 1].clone());
         assert_eq!(gop.as_deref(), Some("120"));
+    }
+
+    #[test]
+    fn explain_skips_the_trailer_and_finds_the_real_cause() {
+        // Shape taken from a real failing probe: the informative line is third
+        // from the end, and the last line is the same boilerplate every failure
+        // ends with.
+        let stderr = "\
+[AVFilterGraph @ 0x1] Impossible to convert between the formats
+[vf#0:0 @ 0x2] Error reinitializing filters!
+[out#0/null @ 0x3] Nothing was written into output file, because at least one of its streams received no packets.
+";
+        let msg = explain(stderr);
+        assert!(msg.contains("Impossible to convert"), "{msg}");
+        assert!(!msg.contains("Nothing was written"), "{msg}");
+    }
+
+    #[test]
+    fn explain_does_not_return_only_the_trailer() {
+        // The regression that made six different failures look identical.
+        let stderr = "[out#0/null @ 0x1] Nothing was written into output file, \
+because at least one of its streams received no packets.\n";
+        let msg = explain(stderr);
+        assert!(!msg.contains("Nothing was written"), "{msg}");
+        assert!(!msg.is_empty());
+    }
+
+    #[test]
+    fn explain_falls_back_to_the_tail_when_nothing_looks_like_an_error() {
+        let msg = explain("some chatter\nfinal word\n");
+        assert!(msg.contains("final word"), "{msg}");
+    }
+
+    #[test]
+    fn explain_survives_empty_stderr() {
+        assert!(!explain("").is_empty());
+        assert!(!explain("   \n\n").is_empty());
     }
 
     #[test]

@@ -342,7 +342,7 @@ impl Recorder {
             let err = String::from_utf8_lossy(&status.stderr);
             return Err(format!(
                 "Could not save the clip: {}",
-                err.lines().last().unwrap_or("unknown ffmpeg error").trim()
+                ffmpeg::explain(&err)
             ));
         }
         Ok(out)
