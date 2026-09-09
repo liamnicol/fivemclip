@@ -18,10 +18,14 @@ on:
       - ".gitignore"
   workflow_dispatch:
 
-# Three pushes in five minutes should not mean three full builds. The newest
+# Three pushes in five minutes should not mean three full builds: the newest
 # push is the only one whose answer anyone wants.
+#
+# The event name is part of the group deliberately. Without it, pushing while a
+# manually requested installer build is running cancels that build - and an
+# installer someone asked for on purpose is not superseded by a commit landing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
