@@ -107,8 +107,10 @@ For a dev loop with hot reload of the UI:
 cargo tauri dev
 ```
 
-CI builds the installer on every push and attaches it to the run. Pushing a tag
-matching `v*` publishes a GitHub release.
+CI runs formatting, clippy and tests on every push. Building the installer is
+the expensive half, so it only runs when you ask for it: hit **Run workflow** on
+the Actions tab to get an installer to try, or push a tag matching `v*` to build
+one and publish it as a GitHub release.
 
 See [docs/architecture.md](docs/architecture.md) for the project layout, how the
 replay buffer works, and how to type-check the Windows-only code from any
