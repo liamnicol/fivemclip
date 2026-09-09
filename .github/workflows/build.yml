@@ -18,9 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      # No toolchain is named here on purpose: rust-toolchain.toml is the single
+      # source of truth, so CI and a developer's machine cannot drift apart.
+      - name: Install Rust
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 
@@ -46,6 +47,39 @@ jobs:
 
       - name: Build installer
         run: cargo tauri build
+
+      # --- Code signing --------------------------------------------------
+      # Not enabled. Turn this on once a certificate exists; nothing else in
+      # the pipeline needs to change.
+      #
+      # The constraint that decides the approach: a USB hardware token cannot
+      # be plugged into a hosted runner, and since June 2023 every code signing
+      # key must live on FIPS 140-2 hardware. So signing in CI requires a cloud
+      # signing service - Azure Trusted Signing, SSL.com eSigner or DigiCert
+      # KeyLocker. A plain .pfx file is no longer an option at any price.
+      #
+      # Azure Trusted Signing is the cheapest route. Add the secrets, uncomment,
+      # and keep the timestamp URL: without timestamping every signature becomes
+      # invalid the day the certificate expires, retroactively breaking
+      # installers people already downloaded.
+      #
+      # - name: Azure login
+      #   uses: azure/login@v2
+      #   with:
+      #     client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      #     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      #     subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      #
+      # - name: Sign installer
+      #   uses: azure/trusted-signing-action@v0
+      #   with:
+      #     endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      #     trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      #     certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+      #     files-folder: ${{ github.workspace }}/target/release/bundle/nsis
+      #     files-folder-filter: exe
+      #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
+      #     timestamp-digest: SHA256
 
       - name: Collect artefacts
         shell: pwsh

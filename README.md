@@ -146,11 +146,56 @@ shorten the audio track by a minute and desync everything after it.
 
 ## Code signing
 
-Unsigned installers get a SmartScreen warning that scares off a chunk of any
-community. To fix it, buy an OV or EV code-signing certificate (around $200–400
-a year), then add the signing step to `.github/workflows/build.yml` with the
-certificate in repository secrets. Tauri supports this natively via
-`bundle.windows.certificateThumbprint`.
+Releases are unsigned. That means two things, and the second is the one people
+forget:
+
+- **SmartScreen** shows "Windows protected your PC" on install. Reputation is
+  tracked per-certificate *and* per-file-hash, so an unsigned build starts from
+  zero on every single release. A signed build accumulates reputation on the
+  certificate and carries it across versions.
+- **Antivirus heuristics.** An unsigned binary that captures the screen, records
+  audio, spawns a subprocess and writes files looks a lot like a RAT to a
+  heuristic scanner. Expect occasional false positives.
+
+### Why there is no cheap option any more
+
+Since June 2023 the CA/Browser Forum requires *every* code signing private key
+to live on FIPS 140-2 Level 2 hardware. The old $80 `.pfx` file no longer exists
+at any validation level.
+
+And a USB token cannot be plugged into a GitHub Actions runner. So signing in CI
+means a cloud signing service, not a token in a drawer:
+
+| | Cost | Company required | Clears SmartScreen |
+| --- | --- | --- | --- |
+| Unsigned | free | no | no |
+| Azure Trusted Signing | ~$10/mo | yes, with verifiable history | over time |
+| OV + cloud HSM | $250-500/yr | usually | over time |
+| EV + cloud HSM | $350-700/yr | yes | immediately |
+
+Only EV removes the warning on day one. Everything else earns trust through
+download volume.
+
+### Turning it on
+
+`.github/workflows/build.yml` carries a commented-out Azure Trusted Signing
+block. Add the secrets it names, uncomment it, and set `signCommand` under
+`bundle.windows` in `tauri.conf.json`. Keep the timestamp URL - without
+timestamping, every signature becomes invalid the day the certificate expires,
+retroactively breaking installers people have already downloaded.
+
+### Until then
+
+- Put a screenshot of the SmartScreen dialog in your install instructions with
+  "click More info, then Run anyway". Removing the surprise removes most of the
+  friction.
+- Upload each release to VirusTotal and link the result. A clean scan across 70
+  engines is worth more to a sceptical user than a certificate they cannot
+  inspect anyway.
+- Report false positives to Microsoft's malware analysis portal; turnaround is
+  usually a day or two.
+- Keeping the repository public is itself a trust argument. For a screen
+  recorder, "you can read exactly what it does" carries real weight.
 
 ## Troubleshooting
 

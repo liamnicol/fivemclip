@@ -255,15 +255,15 @@ impl Mixer {
                 // Drain whatever the mic has produced since last time. Never
                 // block on it: a dead mic must not stall game audio.
                 while let Ok(chunk) = mic_rx.try_recv() {
-                    for s in chunk.chunks_exact(4) {
-                        mic_buf.push_back(f32::from_le_bytes([s[0], s[1], s[2], s[3]]));
+                    for sample in chunk.as_chunks::<4>().0 {
+                        mic_buf.push_back(f32::from_le_bytes(*sample));
                     }
                 }
             }
 
             out.clear();
-            for s in block.chunks_exact(4) {
-                let sys = f32::from_le_bytes([s[0], s[1], s[2], s[3]]) * self.system_gain;
+            for sample in block.as_chunks::<4>().0 {
+                let sys = f32::from_le_bytes(*sample) * self.system_gain;
                 let m = mic_buf.pop_front().unwrap_or(0.0) * self.mic_gain;
                 // Straight sum, then clamp. Anything cleverer (compression,
                 // ducking) belongs in an editor, not in the capture path.

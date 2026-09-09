@@ -1,0 +1,10 @@
+# Pinned deliberately. Clippy gains lints with every release, and an unpinned
+# toolchain means a compiler published on a Tuesday can fail a release build on
+# a Wednesday without anything in this repo having changed.
+#
+# To bump: change the version, then run
+#   cargo clippy --workspace --all-targets -- -D warnings
+# and fix whatever moved before committing.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
