@@ -147,6 +147,12 @@ $("btn-shot").addEventListener("click", async () => {
   }
 });
 
+$("btn-region").addEventListener("click", async () => {
+  await call("start_region_capture");
+  // The overlay covers the screen, so drop this window out of the way first.
+  refreshLibrary();
+});
+
 $("btn-toggle").addEventListener("click", async () => {
   const status = await invoke("get_status");
   if (status.running) {
@@ -369,11 +375,13 @@ function applySettings(next) {
   $("bitrate_kbps").value = next.bitrate_kbps;
   $("capture_cursor").checked = next.capture_cursor;
   $("screenshot_jpeg").checked = next.screenshot_jpeg;
+  $("copy_screenshot_to_clipboard").checked = next.copy_screenshot_to_clipboard;
   $("mic_mode").value = next.mic_mode;
   $("mic_gain_db").value = next.mic_gain_db;
   $("system_gain_db").value = next.system_gain_db;
   $("hotkey_save_clip").value = next.hotkey_save_clip;
   $("hotkey_screenshot").value = next.hotkey_screenshot;
+  $("hotkey_region").value = next.hotkey_region;
   $("hotkey_toggle_buffer").value = next.hotkey_toggle_buffer;
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
@@ -391,6 +399,7 @@ function applySettings(next) {
 
   $("hint-clip").textContent = next.hotkey_save_clip || "no hotkey";
   $("hint-shot").textContent = next.hotkey_screenshot || "no hotkey";
+  $("hint-region").textContent = next.hotkey_region || "no hotkey";
 }
 
 function collectSettings() {
@@ -402,11 +411,13 @@ function collectSettings() {
     monitor_index: Number($("monitor_index").value || 0),
     capture_cursor: $("capture_cursor").checked,
     screenshot_jpeg: $("screenshot_jpeg").checked,
+    copy_screenshot_to_clipboard: $("copy_screenshot_to_clipboard").checked,
     mic_mode: $("mic_mode").value,
     mic_gain_db: Number($("mic_gain_db").value),
     system_gain_db: Number($("system_gain_db").value),
     hotkey_save_clip: $("hotkey_save_clip").value,
     hotkey_screenshot: $("hotkey_screenshot").value,
+    hotkey_region: $("hotkey_region").value,
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").value,
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,

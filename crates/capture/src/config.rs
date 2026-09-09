@@ -29,6 +29,9 @@ pub struct Settings {
     /// JPEG keeps screenshots small enough to upload instantly; PNG keeps them
     /// pixel-exact. Most people sharing a clip want the former.
     pub screenshot_jpeg: bool,
+    /// Put the image on the clipboard as well as on disk. For a region grab
+    /// this is usually the whole point - the file is the backup copy.
+    pub copy_screenshot_to_clipboard: bool,
     /// JPEG quality, 2 (best) to 31 (worst) in ffmpeg's scale.
     pub screenshot_quality: u32,
 
@@ -50,6 +53,8 @@ pub struct Settings {
 
     pub hotkey_save_clip: String,
     pub hotkey_screenshot: String,
+    /// Drag-a-rectangle capture, the way Greenshot and ShareX do it.
+    pub hotkey_region: String,
     pub hotkey_toggle_buffer: String,
 
     /// Personal ImgBB key. Deliberately per-user: a shared key baked into a
@@ -74,6 +79,7 @@ impl Default for Settings {
             monitor_index: 0,
             capture_cursor: false,
             screenshot_jpeg: true,
+            copy_screenshot_to_clipboard: true,
             screenshot_quality: 3,
             mic_mode: MicMode::Mixed,
             mic_gain_db: 0.0,
@@ -84,6 +90,7 @@ impl Default for Settings {
             setup_complete: false,
             hotkey_save_clip: "F9".into(),
             hotkey_screenshot: "F10".into(),
+            hotkey_region: "F11".into(),
             hotkey_toggle_buffer: "Ctrl+F9".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,

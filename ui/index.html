@@ -44,6 +44,10 @@
               Screenshot
               <small id="hint-shot">F10</small>
             </button>
+            <button class="btn btn-lg" id="btn-region">
+              Select a region
+              <small id="hint-region">F11</small>
+            </button>
           </div>
         </div>
 
@@ -168,6 +172,10 @@
               <input type="text" class="hotkey" id="hotkey_screenshot" readonly />
             </label>
             <label class="field">
+              <span>Screenshot a region</span>
+              <input type="text" class="hotkey" id="hotkey_region" readonly />
+            </label>
+            <label class="field">
               <span>Toggle buffer</span>
               <input type="text" class="hotkey" id="hotkey_toggle_buffer" readonly />
             </label>
@@ -188,6 +196,10 @@
                 <a href="#" data-external="https://api.imgbb.com/">api.imgbb.com</a>.
                 Yours alone — it never leaves this PC except to ImgBB.
               </small>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="copy_screenshot_to_clipboard" />
+              <span>Copy screenshots to the clipboard as well as saving them</span>
             </label>
             <label class="checkbox">
               <input type="checkbox" id="imgbb_auto_upload" />

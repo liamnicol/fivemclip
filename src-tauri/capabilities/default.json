@@ -2,7 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions for the FiveMClip main window.",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "region"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-show",
@@ -16,6 +19,7 @@
     "clipboard-manager:allow-write-text",
     "dialog:allow-open",
     "global-shortcut:default",
-    "autostart:default"
+    "autostart:default",
+    "clipboard-manager:allow-write-image"
   ]
 }

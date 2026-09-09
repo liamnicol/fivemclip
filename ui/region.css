@@ -1,0 +1,80 @@
+/* The overlay is a still photograph of the screen with a hole cut in it, not a
+   transparent window over the live desktop. Selecting against a frozen frame
+   means a notification cannot pop up between the drag and the crop. */
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  cursor: crosshair;
+  user-select: none;
+  font: 13px/1.4 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color: #eef1f7;
+}
+
+#frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* contain, not cover: never show the user a cropped view of their own screen
+     and then cut a rectangle out of the part they cannot see. */
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
+
+#selection {
+  position: absolute;
+  border: 1px solid #e53a35;
+  /* One enormous shadow dims everything outside the selection without needing
+     four separate mask elements kept in sync. */
+  box-shadow: 0 0 0 100vmax rgba(6, 8, 12, 0.6);
+  pointer-events: none;
+}
+
+/* Before a drag starts, dim the whole screen. */
+body:not(.is-selecting)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 12, 0.35);
+  pointer-events: none;
+}
+
+.size {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  background: #e53a35;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Keep the readout on screen when the selection starts at the very top. */
+#selection.near-top .size { top: auto; bottom: -26px; }
+
+.hint, .error {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(14, 16, 22, 0.92);
+  border: 1px solid #272d3d;
+  pointer-events: none;
+}
+.hint { bottom: 40px; }
+.error { top: 40px; border-color: rgba(229, 58, 53, 0.5); color: #f5a19e; }
+body.is-selecting .hint { opacity: 0; }
+
+kbd {
+  background: #1d2230;
+  border: 1px solid #272d3d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: 600 12px/1 ui-monospace, Consolas, monospace;
+}

@@ -12,19 +12,38 @@ use std::process::Stdio;
 use crate::config::Settings;
 use crate::ffmpeg::{self, Pipeline, PIPELINES};
 
+/// Where the next screenshot should be written, named by the clock.
+pub fn next_screenshot_path(s: &Settings) -> Result<PathBuf, String> {
+    let dir = s.screenshots_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create screenshots folder: {e}"))?;
+    let ext = if s.screenshot_jpeg { "jpg" } else { "png" };
+    Ok(dir.join(format!(
+        "Shot_{}.{ext}",
+        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
+    )))
+}
+
 pub fn capture(
     ffmpeg_path: &std::path::Path,
     s: &Settings,
     preferred: Option<&Pipeline>,
 ) -> Result<PathBuf, String> {
-    let dir = s.screenshots_dir();
-    fs::create_dir_all(&dir).map_err(|e| format!("could not create screenshots folder: {e}"))?;
+    let out = next_screenshot_path(s)?;
+    capture_to(ffmpeg_path, s, preferred, &out)?;
+    Ok(out)
+}
 
-    let ext = if s.screenshot_jpeg { "jpg" } else { "png" };
-    let out = dir.join(format!(
-        "Shot_{}.{ext}",
-        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
-    ));
+/// Grab one full frame to an explicit path. Used both for ordinary screenshots
+/// and to freeze the screen behind the region-select overlay.
+pub fn capture_to(
+    ffmpeg_path: &std::path::Path,
+    s: &Settings,
+    preferred: Option<&Pipeline>,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("could not create folder: {e}"))?;
+    }
 
     // Try Desktop Duplication first, then GDI. Whichever capture method the
     // recorder settled on is a good hint about what works on this machine.
@@ -43,12 +62,80 @@ pub fn capture(
             .find(|p| p.uses_dda == use_dda)
             .expect("a pipeline exists for each capture method");
 
-        match try_capture(ffmpeg_path, s, pipeline, &out) {
-            Ok(()) => return Ok(out),
+        match try_capture(ffmpeg_path, s, pipeline, out) {
+            Ok(()) => return Ok(()),
             Err(e) => last_error = e,
         }
     }
     Err(last_error)
+}
+
+/// Cut a rectangle out of an already-captured frame.
+///
+/// Cropping the saved frame rather than re-capturing means what the user
+/// selected is exactly what they get - the screen cannot change underneath the
+/// selection between the drag and the save.
+pub fn crop(
+    ffmpeg_path: &std::path::Path,
+    s: &Settings,
+    source: &std::path::Path,
+    out: &std::path::Path,
+    (x, y, w, h): (u32, u32, u32, u32),
+) -> Result<(), String> {
+    if w == 0 || h == 0 {
+        return Err("That selection was empty.".into());
+    }
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("could not create folder: {e}"))?;
+    }
+
+    let mut args: Vec<String> = vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-nostdin".into(),
+        "-y".into(),
+        "-i".into(),
+        source.to_string_lossy().into_owned(),
+        "-vf".into(),
+        format!("crop={w}:{h}:{x}:{y}"),
+        "-frames:v".into(),
+        "1".into(),
+        "-update".into(),
+        "1".into(),
+    ];
+    let wants_jpeg = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        .unwrap_or(false);
+    if wants_jpeg {
+        args.extend([
+            "-q:v".into(),
+            s.screenshot_quality.to_string(),
+            "-pix_fmt".into(),
+            "yuvj420p".into(),
+        ]);
+    }
+    args.push(out.to_string_lossy().into_owned());
+
+    let result = ffmpeg::command(ffmpeg_path)
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("could not run ffmpeg: {e}"))?;
+
+    if result.status.success() && out.exists() {
+        Ok(())
+    } else {
+        Err(ffmpeg::explain(&String::from_utf8_lossy(&result.stderr)))
+    }
+}
+
+/// Scratch file holding the frozen screen while the overlay is open.
+pub fn region_frame_path() -> PathBuf {
+    std::env::temp_dir().join("fivemclip-region-frame.png")
 }
 
 fn try_capture(

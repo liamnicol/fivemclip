@@ -14,6 +14,8 @@ use crate::library::{self, MediaItem};
 use crate::state::AppState;
 use crate::upload::{self, ImgbbResult};
 
+pub const REGION_WINDOW: &str = "region";
+
 #[derive(Serialize)]
 pub struct Status {
     #[serde(flatten)]
@@ -205,6 +207,206 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
         .unwrap_or_default();
     notify(&app, "Screenshot saved", &name);
     Ok(path_string)
+}
+
+/// Freeze the screen and open the selection overlay.
+///
+/// The screen is captured *first* and the overlay then shows that still image,
+/// so what the user drags a box around is exactly what they get. Selecting
+/// against a live screen would let a notification pop up between the drag and
+/// the crop.
+#[tauri::command]
+pub fn start_region_capture(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    let ffmpeg = state.ffmpeg()?.clone();
+    let settings = state.settings.lock().clone();
+    let pipeline = settings
+        .cached_pipeline
+        .as_deref()
+        .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
+
+    let frame = shot::region_frame_path();
+    shot::capture_to(&ffmpeg, &settings, pipeline, &frame)?;
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        REGION_WINDOW,
+        tauri::WebviewUrl::App("region.html".into()),
+    )
+    .title("Select a region")
+    .fullscreen(true)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .build()
+    .map_err(|e| format!("could not open the selection overlay: {e}"))?;
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct RegionFrame {
+    /// Plain filesystem path. The front end runs it through Tauri's own
+    /// convertFileSrc rather than us hand-building an asset URL, which is one
+    /// less place to get Windows path encoding wrong.
+    pub path: String,
+}
+
+#[tauri::command]
+pub fn region_frame(app: AppHandle) -> Result<RegionFrame, String> {
+    let frame = shot::region_frame_path();
+    if !frame.exists() {
+        return Err("The captured frame is missing.".into());
+    }
+    // Scoped here rather than at startup: the scratch frame only needs to be
+    // readable while an overlay is actually open.
+    app.asset_protocol_scope().allow_file(&frame).ok();
+    Ok(RegionFrame {
+        path: frame.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub async fn finish_region_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    close_region_window(&app);
+
+    let (ffmpeg, settings) = {
+        let ffmpeg = state.ffmpeg()?.clone();
+        (ffmpeg, state.settings.lock().clone())
+    };
+
+    let frame = shot::region_frame_path();
+    let out = shot::next_screenshot_path(&settings)?;
+    shot::crop(&ffmpeg, &settings, &frame, &out, (x, y, width, height))?;
+
+    let mut notes: Vec<&str> = Vec::new();
+
+    if settings.copy_screenshot_to_clipboard {
+        match copy_image_to_clipboard(&app, &ffmpeg, &settings, &out) {
+            Ok(()) => notes.push("copied"),
+            // Not worth failing the capture over: the file is already saved.
+            Err(_) => notes.push("saved to disk only"),
+        }
+    }
+
+    if settings.imgbb_auto_upload && !settings.imgbb_api_key.trim().is_empty() {
+        match upload::imgbb(&settings.imgbb_api_key, &out).await {
+            Ok(result) => {
+                let _ = app.clipboard().write_text(result.url);
+                notes.clear();
+                notes.push("link copied");
+            }
+            Err(_) => notes.push("upload failed"),
+        }
+    }
+
+    let _ = std::fs::remove_file(&frame);
+    notify(
+        &app,
+        "Region captured",
+        &if notes.is_empty() {
+            out.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        } else {
+            notes.join(" · ")
+        },
+    );
+    Ok(out.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn cancel_region_capture(app: AppHandle) {
+    close_region_window(&app);
+    let _ = std::fs::remove_file(shot::region_frame_path());
+}
+
+fn close_region_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(REGION_WINDOW) {
+        let _ = window.close();
+    }
+}
+
+/// Put an image on the clipboard.
+///
+/// The clipboard takes PNG, so a JPEG capture is transcoded to a scratch file
+/// first rather than being re-encoded in place - the saved file keeps whatever
+/// format the user asked for.
+fn copy_image_to_clipboard(
+    app: &AppHandle,
+    ffmpeg: &std::path::Path,
+    settings: &Settings,
+    image: &std::path::Path,
+) -> Result<(), String> {
+    let is_png = image
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("png"))
+        .unwrap_or(false);
+
+    let png = if is_png {
+        image.to_path_buf()
+    } else {
+        let scratch = std::env::temp_dir().join("fivemclip-clipboard.png");
+        let png_settings = Settings {
+            screenshot_jpeg: false,
+            ..settings.clone()
+        };
+        // A crop of the whole thing is just a format conversion.
+        let dimensions = image_dimensions(ffmpeg, image)?;
+        shot::crop(
+            ffmpeg,
+            &png_settings,
+            image,
+            &scratch,
+            (0, 0, dimensions.0, dimensions.1),
+        )?;
+        scratch
+    };
+
+    let loaded = tauri::image::Image::from_path(&png).map_err(|e| e.to_string())?;
+    app.clipboard()
+        .write_image(&loaded)
+        .map_err(|e| e.to_string())
+}
+
+fn image_dimensions(
+    ffmpeg: &std::path::Path,
+    image: &std::path::Path,
+) -> Result<(u32, u32), String> {
+    let out = fivemclip_capture::ffmpeg::command(ffmpeg)
+        .args(["-hide_banner", "-i"])
+        .arg(image)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    // ffmpeg reports the stream as "... 1920x1080 ..." and exits non-zero
+    // because no output was requested; the dimensions are what we are after.
+    let text = String::from_utf8_lossy(&out.stderr);
+    for token in text.split(|c: char| c.is_whitespace() || c == ',') {
+        if let Some((w, h)) = token.split_once('x') {
+            if let (Ok(w), Ok(h)) = (w.parse::<u32>(), h.parse::<u32>()) {
+                if w > 1 && h > 1 {
+                    return Ok((w, h));
+                }
+            }
+        }
+    }
+    Err("could not read the image size".into())
 }
 
 #[tauri::command]

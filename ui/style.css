@@ -104,7 +104,8 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 }
 .meter-labels strong { font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
 
-.hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Save clip stays widest: it is the button people reach for under pressure. */
+.hero-actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
 
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
 
@@ -243,6 +244,7 @@ a { color: #7aa7ff; }
 
 @media (max-width: 780px) {
   .cards { grid-template-columns: 1fr; }
+  .hero-actions { grid-template-columns: 1fr; }
   .tabs { gap: 0; }
 }
 

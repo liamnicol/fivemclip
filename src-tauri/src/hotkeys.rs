@@ -9,6 +9,7 @@ use crate::state::AppState;
 enum Action {
     SaveClip,
     Screenshot,
+    RegionShot,
     ToggleBuffer,
 }
 
@@ -21,6 +22,7 @@ pub fn register(app: &AppHandle, settings: &Settings) {
     for (combo, action) in [
         (&settings.hotkey_save_clip, Action::SaveClip),
         (&settings.hotkey_screenshot, Action::Screenshot),
+        (&settings.hotkey_region, Action::RegionShot),
         (&settings.hotkey_toggle_buffer, Action::ToggleBuffer),
     ] {
         let combo = combo.trim();
@@ -101,6 +103,17 @@ fn run(app: &AppHandle, action: Action) {
                 }
                 Err(e) => notify(app, "Screenshot failed", &e),
             }
+        }
+        Action::RegionShot => {
+            // Opening a window has to happen on the main thread, and this
+            // handler is already on a worker.
+            let app = app.clone();
+            let _ = app.clone().run_on_main_thread(move || {
+                let state = app.state::<AppState>();
+                if let Err(e) = crate::commands::start_region_capture(app.clone(), state) {
+                    notify(&app, "Region capture failed", &e);
+                }
+            });
         }
         Action::ToggleBuffer => {
             let running = state
