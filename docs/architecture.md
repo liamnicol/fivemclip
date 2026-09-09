@@ -71,3 +71,32 @@ client returns *no frames at all* rather than frames of silence. Left alone, a
 quiet minute would shorten the audio track by a minute and desync everything
 after it. `audio.rs` tracks how far the stream has fallen behind wall clock and
 injects silence to close the gap.
+
+## Why the bundled ffmpeg is pinned to a release branch
+
+`tools/fetch-ffmpeg.ps1` deliberately tracks BtbN's `n8.1` branch rather than
+`master`, and that is not a stability preference - it is a hard compatibility
+constraint.
+
+BtbN's master and n9.0 builds compile against NVENC SDK 13.1, which refuses to
+open the encoder unless the GPU driver is version 610 or newer:
+
+```
+Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0
+The minimum required Nvidia driver for nvenc is 610.00 or newer
+```
+
+A GTX 1080 Ti on a current driver reports 13.0. It fails the check, the encoder
+probe falls through to software x264, and the user loses frames in the game the
+tool exists to record - with no error, because everything technically worked.
+
+Handing a community a recorder that quietly costs them performance unless they
+first update their GPU driver is not a trade worth making, so the bundle tracks
+the newest branch that works on ordinary drivers.
+
+`tools/test-ffmpeg-builds.ps1` is how that was determined: it downloads each
+candidate and runs a real encode. Re-run it on the oldest driver worth
+supporting before changing the pinned branch. The fetch script also asserts the
+version it downloaded matches the branch it asked for, so if that URL ever
+starts serving something else the build fails loudly instead of shipping a
+silent regression.
