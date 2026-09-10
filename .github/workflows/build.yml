@@ -102,6 +102,21 @@ jobs:
       - name: Install Tauri CLI
         run: cargo binstall tauri-cli --version "^2" --no-confirm
 
+      # The label goes into the binary as well as the filename, so the app can
+      # say which build it is. Without it every build reports 0.1.0 and there
+      # is no way to tell a tester's version from a screenshot.
+      - name: Compute the build label
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $label = if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version
+          } else {
+            "$version-dev.$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_SHA.Substring(0,7))"
+          }
+          "FIVEMCLIP_BUILD=$label" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Build label: $label"
+
       - name: Build installer
         run: cargo tauri build
 
@@ -141,19 +156,14 @@ jobs:
 
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
 
-          # Every dev build carrying the same product version means downloads
-          # collide in the browser and nobody can say which one they are
-          # running when they report a bug. Tagged builds are named for the
-          # tag; everything else gets the run number and commit, which are the
-          # two things needed to find the exact build again.
+          # Same label the binary was compiled with, so the filename and what
+          # the app reports in Settings can never disagree.
+          $label = $env:FIVEMCLIP_BUILD
           if ($env:GITHUB_REF -like 'refs/tags/v*') {
               $tag = $env:GITHUB_REF -replace '^refs/tags/v', ''
               if ($tag -ne $version) {
                   throw "Tag v$tag does not match the version in tauri.conf.json ($version). Bump the version before tagging."
               }
-              $label = $version
-          } else {
-              $label = "$version-dev.$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_SHA.Substring(0,7))"
           }
           Write-Host "Build label: $label"
 

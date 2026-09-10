@@ -129,7 +129,10 @@ pub fn get_status(state: State<AppState>) -> Status {
             .paused_for_disk
             .load(std::sync::atomic::Ordering::Relaxed),
         portable: fivemclip_capture::config::is_portable(),
-        version: env!("CARGO_PKG_VERSION"),
+        // Set by CI to the same label the installer is named with. Falls back
+        // to the bare version for a local build, which is the only case where
+        // "which build is this" has an obvious answer.
+        version: option_env!("FIVEMCLIP_BUILD").unwrap_or(env!("CARGO_PKG_VERSION")),
     }
 }
 
