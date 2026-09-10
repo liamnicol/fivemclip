@@ -100,3 +100,26 @@ supporting before changing the pinned branch. The fetch script also asserts the
 version it downloaded matches the branch it asked for, so if that URL ever
 starts serving something else the build fails loudly instead of shipping a
 silent regression.
+
+## On portable builds
+
+There isn't one, deliberately. The build artefact used to include the bare
+`FiveMClip.exe` alongside the installer, which looked like a portable build and
+was not: it ships without `bin/ffmpeg.exe`, so it launches and immediately
+reports that ffmpeg is missing.
+
+A real portable build needs three things the installer provides:
+
+1. **ffmpeg beside the executable.** `find_ffmpeg()` looks in `bin/ffmpeg.exe`
+   next to the binary, then the binary's own directory, then `PATH`. A portable
+   zip has to carry it.
+2. **Settings next to the executable.** Config currently goes to the app config
+   directory under `%APPDATA%`, so a portable copy would silently share
+   settings with an installed one - and leave them behind when the folder is
+   deleted, which is the one thing portable software must not do.
+3. **A WebView2 fallback.** The NSIS installer bootstraps the runtime when it
+   is missing. It is present on Windows 11 and most Windows 10 installs, but
+   not guaranteed, and a portable build cannot install it.
+
+None of that is hard. It is just more than copying an executable, which is what
+the workflow was accidentally doing.

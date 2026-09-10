@@ -124,8 +124,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/bundle/nsis/*.exe dist/ -ErrorAction SilentlyContinue
-          Copy-Item target/release/FiveMClip.exe dist/ -ErrorAction SilentlyContinue
+          # The installer only. The bare target/release/FiveMClip.exe used to be
+          # copied here too, which looked like a portable build and was not: it
+          # ships without bin/ffmpeg.exe, so it launches and then cannot record
+          # anything. See docs/architecture.md if a real portable build is ever
+          # wanted.
+          Copy-Item target/release/bundle/nsis/*.exe dist/
           Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4
