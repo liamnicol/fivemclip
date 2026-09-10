@@ -368,6 +368,16 @@
       </div>
     </section>
 
+    <!-- Shown once after an update. Sits over the app rather than replacing
+         it like first-run setup does: there is nothing to configure here. -->
+    <div class="sheet" id="whatsnew" hidden>
+      <div class="sheet-card">
+        <h2>What&rsquo;s new in <span id="whatsnew-version"></span></h2>
+        <div id="whatsnew-body"></div>
+        <button class="btn btn-primary btn-wide" id="whatsnew-done">Got it</button>
+      </div>
+    </div>
+
     <div id="toast" class="toast" hidden></div>
     <script src="main.js"></script>
   </body>

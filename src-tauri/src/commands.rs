@@ -254,6 +254,7 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
     if settings.imgbb_auto_upload && !settings.imgbb_api_key.trim().is_empty() {
         match upload::imgbb(&settings.imgbb_api_key, &path).await {
             Ok(result) => {
+                state.links.record(&path, &result);
                 let _ = app.clipboard().write_text(result.url.clone());
                 notify(&app, "Screenshot uploaded", "Link copied to clipboard");
                 return Ok(path_string);
@@ -397,7 +398,8 @@ pub async fn finish_region_capture(
     if settings.imgbb_auto_upload && !settings.imgbb_api_key.trim().is_empty() {
         match upload::imgbb(&settings.imgbb_api_key, &out).await {
             Ok(result) => {
-                let _ = app.clipboard().write_text(result.url);
+                state.links.record(&out, &result);
+                let _ = app.clipboard().write_text(result.url.clone());
                 notes.clear();
                 notes.push("link copied");
             }
@@ -727,7 +729,7 @@ pub fn save_edited_image(
 
 #[tauri::command]
 pub fn library_items(state: State<AppState>) -> Vec<MediaItem> {
-    library::list(&state.settings.lock())
+    library::list(&state.settings.lock(), &state.links)
 }
 
 #[tauri::command]
@@ -736,7 +738,10 @@ pub fn delete_item(state: State<AppState>, path: String) -> Result<(), String> {
     if !library::is_managed(&state.settings.lock(), &path) {
         return Err("That file is not in the FiveMClip folders.".into());
     }
-    std::fs::remove_file(&path).map_err(|e| format!("Could not delete: {e}"))
+    std::fs::remove_file(&path).map_err(|e| format!("Could not delete: {e}"))?;
+    // The file is gone; a link pointing at it is just clutter in the index.
+    state.links.forget(&path);
+    Ok(())
 }
 
 #[tauri::command]
@@ -779,7 +784,9 @@ pub async fn upload_imgbb(
     path: String,
 ) -> Result<ImgbbResult, String> {
     let key = state.settings.lock().imgbb_api_key.clone();
-    let result = upload::imgbb(&key, &PathBuf::from(path)).await?;
+    let path = PathBuf::from(path);
+    let result = upload::imgbb(&key, &path).await?;
+    state.links.record(&path, &result);
     let _ = app.clipboard().write_text(result.url.clone());
     Ok(result)
 }
@@ -794,6 +801,12 @@ pub fn youtube_handoff(app: AppHandle, path: String) -> Result<(), String> {
     app.opener()
         .open_url(upload::YOUTUBE_UPLOAD_URL, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// Put a remembered link back on the clipboard.
+#[tauri::command]
+pub fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

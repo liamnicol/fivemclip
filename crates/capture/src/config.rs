@@ -90,6 +90,11 @@ pub struct Settings {
     /// Auto-upload every screenshot and put the link on the clipboard.
     pub imgbb_auto_upload: bool,
 
+    /// Last version whose "what's new" notes the user has seen. Empty on a
+    /// fresh install, which is why the splash is gated on `setup_complete`
+    /// too - nobody wants a changelog for software they installed a minute ago.
+    pub last_seen_version: String,
+
     /// Cached winner from the startup pipeline probe. Cleared when hardware or
     /// ffmpeg changes underneath us.
     pub cached_pipeline: Option<String>,
@@ -127,6 +132,7 @@ impl Default for Settings {
             hotkey_toggle_buffer: "Ctrl+F9".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
+            last_seen_version: String::new(),
             cached_pipeline: None,
             cached_pipeline_fingerprint: None,
         }

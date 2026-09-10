@@ -7,9 +7,11 @@ mod commands;
 mod diagnostics;
 mod hotkeys;
 mod library;
+mod links;
 mod state;
 mod updates;
 mod upload;
+mod whatsnew;
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -65,9 +67,12 @@ fn main() {
             commands::open_log_folder,
             commands::upload_imgbb,
             commands::youtube_handoff,
+            commands::copy_text,
             commands::open_url,
             updates::check_for_update,
             updates::install_update,
+            whatsnew::whats_new,
+            whatsnew::dismiss_whats_new,
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;

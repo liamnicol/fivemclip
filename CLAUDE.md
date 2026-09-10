@@ -87,6 +87,10 @@ Bump the version in **both** `Cargo.toml` and `src-tauri/tauri.conf.json` -
 checks fail if they disagree - then tag `vX.Y.Z` and push the tag. CI builds,
 signs, writes `latest.json` and publishes the release.
 
+Add an entry at the top of `whatsnew::RELEASES` for the new version. A test
+fails without one, because a release that ships an empty "what's new" splash is
+worse than one that ships none.
+
 `TAURI_SIGNING_PRIVATE_KEY` must stay set as a repository secret. Losing it
 means no installed copy can ever be updated again; they would all need a manual
 reinstall.

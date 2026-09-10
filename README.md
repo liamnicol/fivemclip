@@ -41,7 +41,8 @@ your case.
   DXGI Desktop Duplication. The app tests every combination on first launch and
   keeps whichever actually works on that PC.
 - **Game and mic audio**, mixed with independent volume controls.
-- **ImgBB upload** for screenshots, with the link copied to your clipboard.
+- **ImgBB upload** for screenshots, with the link copied to your clipboard and
+  kept in the Library so you can copy it again weeks later.
 - **YouTube hand-off** for clips (see below).
 - **Tray resident.** Closing the window keeps recording. Optionally only records
   while a game you have named is running, so it is not burning your GPU on the
@@ -144,6 +145,11 @@ matters.
 Get a free API key from [api.imgbb.com](https://api.imgbb.com/) and paste it into
 Settings. Turn on *Upload every screenshot automatically* and every screenshot
 lands on your clipboard as a link, ready to paste into Discord.
+
+Every link is written down. An uploaded screenshot shows its link in the Library
+with a **Copy link** button, so losing the one on your clipboard is not the end
+of it — ImgBB has no way to list an anonymous key's uploads, and a link nobody
+saved is gone for good.
 
 The key is yours and is stored only on your PC. FiveMClip deliberately does not
 ship a shared key — a key baked into a distributed binary gets extracted and

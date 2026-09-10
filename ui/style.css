@@ -212,7 +212,42 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 .item .actions { display: flex; gap: 6px; padding: 0 12px 12px; flex-wrap: wrap; }
 .item .actions .btn { padding: 6px 10px; font-size: 12px; flex: 1; min-width: 0; }
 
+/* The remembered ImgBB link. Truncated rather than wrapped: the card is a
+   thumbnail grid, and a full URL on three lines pushes everything else out of
+   view. The whole link is on the tooltip and one click from the clipboard. */
+.item .link {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .empty { text-align: center; color: var(--muted); padding: 48px 0; }
+
+/* ---------- what's new ---------- */
+
+.sheet {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px 20px; overflow-y: auto;
+  background: rgba(6, 8, 12, 0.7);
+}
+
+.sheet-card {
+  width: 100%; max-width: 460px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 16px; padding: 28px;
+}
+.sheet-card h2 { margin: 0 0 20px; font-size: 19px; letter-spacing: -0.2px; }
+.sheet-card h3 {
+  margin: 18px 0 8px; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+}
+.sheet-card h3:first-child { margin-top: 0; }
+.sheet-card ul { margin: 0 0 18px; padding-left: 18px; }
+.sheet-card li { font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
 
 /* ---------- settings ---------- */
 

@@ -4,6 +4,8 @@ use std::time::UNIX_EPOCH;
 use fivemclip_capture::config::Settings;
 use serde::Serialize;
 
+use crate::links::{LinkRecord, Links};
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaItem {
     pub path: String,
@@ -12,9 +14,20 @@ pub struct MediaItem {
     pub kind: &'static str,
     pub size_bytes: u64,
     pub modified_ms: i64,
+    /// Where this one was uploaded, if it ever was. The whole point of keeping
+    /// the index: the link outlives the toast that first showed it.
+    pub link: Option<LinkRecord>,
 }
 
-pub fn list(settings: &Settings) -> Vec<MediaItem> {
+pub fn list(settings: &Settings, links: &Links) -> Vec<MediaItem> {
+    let mut items = scan(settings);
+    for item in &mut items {
+        item.link = links.get(Path::new(&item.path));
+    }
+    items
+}
+
+fn scan(settings: &Settings) -> Vec<MediaItem> {
     let mut items = Vec::new();
     collect(&settings.clips_dir(), "clip", &["mp4", "mkv"], &mut items);
     collect(
@@ -68,6 +81,7 @@ fn collect(dir: &Path, kind: &'static str, exts: &[&str], out: &mut Vec<MediaIte
             kind,
             size_bytes: meta.len(),
             modified_ms,
+            link: None,
         });
     }
 }
@@ -89,7 +103,7 @@ pub fn is_managed(settings: &Settings, path: &Path) -> bool {
 }
 
 pub fn total_size(settings: &Settings) -> u64 {
-    list(settings).iter().map(|i| i.size_bytes).sum()
+    scan(settings).iter().map(|i| i.size_bytes).sum()
 }
 
 pub fn managed_dirs(settings: &Settings) -> Vec<PathBuf> {

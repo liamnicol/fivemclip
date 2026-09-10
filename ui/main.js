@@ -309,16 +309,27 @@ function renderLibrary() {
       : `<img class="thumb" src="${src}" alt="" loading="lazy" />`;
 
     const when = new Date(item.modified_ms).toLocaleString();
+    // An already-uploaded screenshot keeps its link instead of offering the
+    // upload again - a second upload would just orphan the first one on ImgBB.
     const share = isVideo
       ? `<button class="btn" data-act="youtube">To YouTube</button>`
       : `<button class="btn" data-act="edit">Hide things</button>
-         <button class="btn" data-act="imgbb">Upload</button>`;
+         ${
+           item.link
+             ? `<button class="btn" data-act="copy-link">Copy link</button>`
+             : `<button class="btn" data-act="imgbb">Upload</button>`
+         }`;
+
+    const link = item.link
+      ? `<span class="link" title="${escapeHtml(item.link.url)}">${escapeHtml(item.link.url)}</span>`
+      : "";
 
     card.innerHTML = `
       ${thumb}
       <div class="meta">
         <span class="name">${escapeHtml(item.name)}</span>
         <span class="sub">${when} · ${formatBytes(item.size_bytes)}</span>
+        ${link}
       </div>
       <div class="actions">
         <button class="btn" data-act="open">Open</button>
@@ -360,12 +371,18 @@ async function handleItemAction(action, item, button) {
       try {
         const result = await call("upload_imgbb", { path: item.path });
         toast(`Uploaded — ${result.url} copied to clipboard`);
+        // Redraw so the card shows the link it now has.
+        refreshLibrary();
       } finally {
         button.disabled = false;
         button.textContent = "Upload";
       }
       break;
     }
+    case "copy-link":
+      await call("copy_text", { text: item.link.url });
+      toast("Link copied to clipboard");
+      break;
     case "delete":
       await call("delete_item", { path: item.path });
       refreshLibrary();
@@ -653,6 +670,9 @@ $("setup-done").addEventListener("click", async () => {
       },
     });
     applySettings(saved);
+    // Someone who just finished setup does not need a changelog for the
+    // version they installed thirty seconds ago.
+    await invoke("dismiss_whats_new").catch(() => {});
     document.body.classList.remove("is-setup");
     $("setup").hidden = true;
     // The watchdog will pick it up within a few seconds, but starting here
@@ -700,6 +720,43 @@ $("update-install").addEventListener("click", async () => {
   }
 });
 
+/* ---------------- what's new ---------------- */
+
+// Shown once after an update, then stamped so it never reappears for that
+// version. Someone who quits without pressing the button sees it again next
+// launch, which is the right way round for a note they may not have read.
+async function showWhatsNew() {
+  const news = await invoke("whats_new").catch(() => null);
+  if (!news) return;
+
+  $("whatsnew-version").textContent = news.version;
+  const body = $("whatsnew-body");
+  body.innerHTML = "";
+  // More than one block means the user skipped a version, so each is headed
+  // with its own number rather than merged into one undated list.
+  const headed = news.releases.length > 1;
+  for (const release of news.releases) {
+    if (headed) {
+      const heading = document.createElement("h3");
+      heading.textContent = release.version;
+      body.append(heading);
+    }
+    const list = document.createElement("ul");
+    for (const line of release.lines) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      list.append(li);
+    }
+    body.append(list);
+  }
+  $("whatsnew").hidden = false;
+}
+
+$("whatsnew-done").addEventListener("click", async () => {
+  $("whatsnew").hidden = true;
+  await invoke("dismiss_whats_new").catch(() => {});
+});
+
 /* ---------------- boot ---------------- */
 
 async function boot() {
@@ -707,6 +764,10 @@ async function boot() {
 
   if (!settings.setup_complete) {
     showSetup();
+  } else {
+    // Only ever behind setup: two overlays at once, one of them modal, is how
+    // a first run turns into a support question.
+    showWhatsNew();
   }
 
   const monitors = await invoke("list_monitors").catch(() => []);

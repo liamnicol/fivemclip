@@ -6,10 +6,14 @@ use fivemclip_capture::ffmpeg::{self, Pipeline};
 use fivemclip_capture::Recorder;
 use parking_lot::Mutex;
 
+use crate::links::Links;
+
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub recorder: Mutex<Option<Recorder>>,
     pub ffmpeg: Option<PathBuf>,
+    /// ImgBB links, remembered per screenshot.
+    pub links: Links,
     settings_path: PathBuf,
     /// Set while the user has deliberately switched the buffer off, so the
     /// "only while FiveM is running" watchdog does not turn it back on.
@@ -34,10 +38,16 @@ impl AppState {
             .unwrap_or_default();
         settings.clamp();
 
+        let links_path = settings_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("links.json");
+
         AppState {
             settings: Mutex::new(settings),
             recorder: Mutex::new(None),
             ffmpeg: ffmpeg::find_ffmpeg(),
+            links: Links::load(links_path),
             settings_path,
             editor_target: Mutex::new(None),
             manually_stopped: AtomicBool::new(false),
