@@ -1,7 +1,37 @@
-# Open bug: the editor window opens blank and the app becomes unkillable
+# Fixed: the editor window opened blank and the app became unkillable
 
-Unresolved as of the last session. Four attempted fixes, none worked. This is a
-record of what has been ruled out, so the next attempt does not repeat them.
+Kept as a record, because the cause was not visible in the code and four
+plausible fixes missed it.
+
+## The cause
+
+`WebviewWindowBuilder::build()` blocks until the event loop creates the window.
+Tauri runs *synchronous* commands on the main thread, which is the event loop
+thread - so a sync command that builds a window waits for a loop that is
+waiting for it. The window appears with its title bar and a blank client area,
+and the whole app stops responding, tray Quit included.
+
+WebKitGTK tolerates this, so it does not reproduce on Linux. The app was built
+and run under Xvfb specifically to test this and came back clean, which is
+worth remembering before trusting a cross-platform reproduction again.
+
+The log is what found it, immediately:
+
+```
+15:44:08.320 ["main"] begin building the editor window
+```
+
+No matching `end`, and on thread `main`. `diagnostics::span()` exists for
+exactly this.
+
+## The fix
+
+Build runtime windows off the main thread. `open_editor` is an async command;
+the region overlay builds from its own worker. Neither hops onto the main
+thread to do it - an earlier version did, reasoning that windows belong to the
+UI thread, and that is precisely the deadlock.
+
+## What was ruled out along the way
 
 ## Symptoms
 

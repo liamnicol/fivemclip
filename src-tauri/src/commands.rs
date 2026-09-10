@@ -317,11 +317,13 @@ pub fn begin_region_capture(app: AppHandle) {
             return;
         }
 
-        // Window creation belongs to the main thread.
-        let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            let built = tauri::WebviewWindowBuilder::new(
-                &handle,
+        // Built from this background thread, NOT hopped onto the main one.
+        // build() waits for the event loop to create the window, so calling it
+        // on the event loop thread deadlocks - which is exactly what an earlier
+        // "windows belong to the main thread" version of this did.
+        let built = crate::diagnostics::span("building the region overlay", || {
+            tauri::WebviewWindowBuilder::new(
+                &app,
                 REGION_WINDOW,
                 tauri::WebviewUrl::App("region.html".into()),
             )
@@ -331,16 +333,12 @@ pub fn begin_region_capture(app: AppHandle) {
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
-            .build();
-
-            if let Err(e) = built {
-                notify(
-                    &handle,
-                    "Could not open the selection overlay",
-                    &e.to_string(),
-                );
-            }
+            .build()
         });
+
+        if let Err(e) = built {
+            notify(&app, "Could not open the selection overlay", &e.to_string());
+        }
     });
 }
 

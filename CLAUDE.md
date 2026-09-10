@@ -54,6 +54,12 @@ which then could not be closed at all.
 **`WebviewUrl::App` takes a path, not a URL.** A query string becomes part of
 the filename and the window renders blank. Pass data through state instead.
 
+**Never build a window from the main thread.** `build()` waits for the event
+loop, so calling it on the event loop thread deadlocks: blank window, frozen
+app, unkillable except from Task Manager. Sync Tauri commands run on the main
+thread - so any command that creates a window must be `async`. This does not
+reproduce on WebKitGTK.
+
 **Redaction defaults to a solid fill.** Pixelate and blur are reversible for
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
@@ -72,6 +78,7 @@ flushed per line. `diagnostics::span()` logs begin/end pairs: a `begin` with no
 
 Devtools are enabled in release builds. Right-click any window, Inspect.
 
-## Open bug
+## Past bugs worth knowing
 
-See `docs/open-bug-editor.md`. Not solved. Read it before touching the editor.
+`docs/open-bug-editor.md` records a deadlock that cost four failed fixes. Read
+it before changing how windows are created.
