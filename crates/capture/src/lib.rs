@@ -6,6 +6,7 @@
 pub mod audio;
 pub mod config;
 pub mod ffmpeg;
+pub mod reaper;
 pub mod ring;
 pub mod shot;
 pub mod sysprobe;

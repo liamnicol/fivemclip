@@ -72,6 +72,17 @@ fn main() {
                 let _ = handle.asset_protocol_scope().allow_directory(&dir, true);
             }
 
+            // Anything ffmpeg-shaped still running from a previous session is
+            // ours and orphaned - a crash, a force-quit, or a build from before
+            // the job object existed. Matched on the full executable path, so
+            // the user's own ffmpeg and anything like OBS are left alone.
+            if let Some(ffmpeg) = app.state::<AppState>().ffmpeg.clone() {
+                let orphans = fivemclip_capture::reaper::kill_orphans(&ffmpeg);
+                if orphans > 0 {
+                    log_orphans(orphans);
+                }
+            }
+
             hotkeys::register(&handle, &settings);
             autostart::apply(&handle, settings.autostart);
             build_tray(app)?;
@@ -155,7 +166,21 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                     .open_path(dir.to_string_lossy().into_owned(), None::<&str>);
             }
             "quit" => {
-                app.state::<AppState>().stop_buffer(true);
+                let state = app.state::<AppState>();
+                // A session in progress is footage the user has asked to keep;
+                // save it rather than losing it to a menu click.
+                let saving = state
+                    .recorder
+                    .lock()
+                    .as_ref()
+                    .map(|r| r.session_active())
+                    .unwrap_or(false);
+                if saving {
+                    if let Some(recorder) = state.recorder.lock().as_mut() {
+                        let _ = recorder.stop_session();
+                    }
+                }
+                state.stop_buffer(true);
                 app.exit(0);
             }
             _ => {}
@@ -171,6 +196,13 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Recorded rather than shown: by the time the window exists the user has
+/// already been rescued, and a notification about a process they never knew
+/// was running would only worry them.
+fn log_orphans(count: usize) {
+    eprintln!("cleaned up {count} orphaned ffmpeg process(es) from a previous run");
 }
 
 fn show_main_window(app: &tauri::AppHandle) {

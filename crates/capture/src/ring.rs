@@ -225,6 +225,10 @@ impl Recorder {
             .spawn()
             .map_err(|e| format!("could not start ffmpeg: {e}"))?;
 
+        // Windows keeps orphaned children alive when their parent dies, so
+        // without this a crash leaves ffmpeg recording forever.
+        crate::reaper::adopt(&child);
+
         let stop = Arc::new(AtomicBool::new(false));
         let audio_thread = match (system, child.stdin.take()) {
             (Some(sys), Some(mut stdin)) => {
