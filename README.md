@@ -7,6 +7,16 @@ screenshots, and shares them without an account, a watermark, or a subscription.
 Built for handing out to a community: one installer, no login, nothing phones
 home.
 
+## Scope
+
+FiveMClip is built and maintained for FiveM. It records the screen rather than a
+particular game, so it works with anything you happen to be playing - but FiveM
+is what gets tested, and what bugs get fixed for.
+
+If it does not work with some other game, that is not a bug that will be chased.
+It is MIT licensed and the source is right here: fork it and make it work for
+your case.
+
 ---
 
 ## What it does
@@ -25,10 +35,9 @@ home.
   while a game you have named is running, so it is not burning your GPU on the
   desktop.
 
-Nothing in the capture path is FiveM-specific - it records the screen, so it
-works for any game or application. Settings has a list of executables that mean
-"record now", pre-filled with FiveM and RedM; add anything you like, or turn the
-condition off and have it always running.
+Settings has a list of executables that mean "record now", pre-filled with
+FiveM and RedM. Add anything you like, or turn the condition off and have the
+buffer always running.
 
 Everything is written to `%USERPROFILE%\Videos\FiveMClip` by default and stays
 there.
