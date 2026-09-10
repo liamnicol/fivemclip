@@ -13,6 +13,12 @@ pub struct AppState {
     settings_path: PathBuf,
     /// Set while the user has deliberately switched the buffer off, so the
     /// "only while FiveM is running" watchdog does not turn it back on.
+    /// Image the editor window should open.
+    ///
+    /// Passed through state rather than the URL: WebviewUrl::App takes a path,
+    /// so a query string becomes part of the filename and the window loads
+    /// nothing at all.
+    pub editor_target: Mutex<Option<PathBuf>>,
     pub manually_stopped: AtomicBool,
     /// Set when recording was stopped because the drive ran low, so the
     /// watchdog knows to wait for real headroom rather than restarting into
@@ -33,6 +39,7 @@ impl AppState {
             recorder: Mutex::new(None),
             ffmpeg: ffmpeg::find_ffmpeg(),
             settings_path,
+            editor_target: Mutex::new(None),
             manually_stopped: AtomicBool::new(false),
             paused_for_disk: AtomicBool::new(false),
         }

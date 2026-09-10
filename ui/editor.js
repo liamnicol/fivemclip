@@ -5,7 +5,7 @@ const { listen } = window.__TAURI__.event;
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-let sourcePath = new URLSearchParams(location.search).get("path") ?? "";
+let sourcePath = "";
 let image = null;
 /** Committed redactions, in order. Kept as data rather than baked into the
  *  canvas so undo is possible and so each one is re-rendered from the pristine
@@ -234,4 +234,15 @@ function load(path) {
 }
 
 listen("editor:open", (event) => load(event.payload));
-if (sourcePath) load(sourcePath);
+
+invoke("editor_target")
+  .then((path) => {
+    if (path) {
+      load(path);
+    } else {
+      document.getElementById("loading").textContent = "No image to edit.";
+    }
+  })
+  .catch((error) => {
+    document.getElementById("loading").textContent = String(error);
+  });

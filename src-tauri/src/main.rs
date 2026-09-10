@@ -55,6 +55,7 @@ fn main() {
             commands::reveal_item,
             commands::open_item,
             commands::open_editor,
+            commands::editor_target,
             commands::save_edited_image,
             commands::open_output_folder,
             commands::upload_imgbb,
@@ -104,10 +105,19 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Closing the window must not stop recording - that is the whole
-                // point of a background replay buffer.
-                api.prevent_close();
-                let _ = window.hide();
+                // Only the main window hides instead of closing: closing it must
+                // not stop recording, which is the whole point of a background
+                // replay buffer.
+                //
+                // Scoped by label deliberately. Applied to every window it also
+                // trapped the editor and the region overlay, which then could
+                // not be closed at all - and since a programmatic close() fires
+                // this too, Escape on the overlay only hid it, leaving a stale
+                // window that swallowed the next capture.
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .run(tauri::generate_context!())

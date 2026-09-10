@@ -544,11 +544,15 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
         return Err("That file is not in the FiveMClip folders.".into());
     }
     app.asset_protocol_scope().allow_file(&path).ok();
+    *state.editor_target.lock() = Some(path.clone());
 
     if let Some(existing) = app.get_webview_window(EDITOR_WINDOW) {
         // Reuse the window rather than stacking them up, and tell it which
-        // image it is now looking at.
+        // image it is now looking at. show() as well as focus: a window that
+        // ended up hidden rather than closed would otherwise be focused
+        // invisibly and the button would look broken.
         let _ = existing.emit("editor:open", path.to_string_lossy().into_owned());
+        let _ = existing.show();
         let _ = existing.unminimize();
         let _ = existing.set_focus();
         return Ok(());
@@ -557,9 +561,7 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
     tauri::WebviewWindowBuilder::new(
         &app,
         EDITOR_WINDOW,
-        tauri::WebviewUrl::App(
-            format!("editor.html?path={}", encode_query(&path.to_string_lossy())).into(),
-        ),
+        tauri::WebviewUrl::App("editor.html".into()),
     )
     .title("Hide things - FiveMClip")
     .inner_size(1100.0, 780.0)
@@ -569,16 +571,18 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
     Ok(())
 }
 
-fn encode_query(value: &str) -> String {
-    value
-        .bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
+/// Which image the editor should be showing.
+///
+/// The window asks on load rather than being told through its URL: WebviewUrl
+/// takes a path, so a query string ends up part of the filename, the asset
+/// never resolves, and the window renders a blank page.
+#[tauri::command]
+pub fn editor_target(state: State<AppState>) -> Option<String> {
+    state
+        .editor_target
+        .lock()
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Write the edited image back.
