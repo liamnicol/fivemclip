@@ -375,11 +375,19 @@ async function handleItemAction(action, item, button) {
 
 /* ---------------- settings ---------------- */
 
-function bindRange(id, format) {
+// Output element named explicitly rather than derived from the input's id.
+// Deriving it guessed wrong for the two disk sliders - they had no readout at
+// all, so "stop recording when free space drops below" did not say below what.
+// A silent null is a bad trade for saving an argument.
+function bindRange(id, outputId, format) {
   const input = $(id);
-  const out = $(`${id.replace(/_kbps$|_db$/, "")}_out`) ?? $(`${id}_out`);
+  const out = $(outputId);
+  if (!input || !out) {
+    console.error(`bindRange: missing ${!input ? id : outputId}`);
+    return () => {};
+  }
   const update = () => {
-    if (out) out.textContent = format(Number(input.value));
+    out.textContent = format(Number(input.value));
   };
   input.addEventListener("input", () => {
     update();
@@ -388,12 +396,12 @@ function bindRange(id, format) {
   return update;
 }
 
-const updateBufferLabel = bindRange("buffer_seconds", formatDuration);
-const updateBitrateLabel = bindRange("bitrate_kbps", (v) => `${(v / 1000).toFixed(0)} Mbps`);
-const updateMicLabel = bindRange("mic_gain_db", (v) => `${v > 0 ? "+" : ""}${v} dB`);
-const updateMinFreeLabel = bindRange("min_free_gb", (v) => `${v} GB`);
-const updateLibraryCapLabel = bindRange("max_library_gb", (v) => `${v} GB`);
-const updateSystemLabel = bindRange("system_gain_db", (v) => `${v > 0 ? "+" : ""}${v} dB`);
+const updateBufferLabel = bindRange("buffer_seconds", "buffer_seconds_out", formatDuration);
+const updateBitrateLabel = bindRange("bitrate_kbps", "bitrate_out", (v) => `${(v / 1000).toFixed(0)} Mbps`);
+const updateMicLabel = bindRange("mic_gain_db", "mic_gain_out", (v) => `${v > 0 ? "+" : ""}${v} dB`);
+const updateMinFreeLabel = bindRange("min_free_gb", "min_free_out", (v) => `${v} GB`);
+const updateLibraryCapLabel = bindRange("max_library_gb", "max_library_out", (v) => `${v} GB`);
+const updateSystemLabel = bindRange("system_gain_db", "system_gain_out", (v) => `${v > 0 ? "+" : ""}${v} dB`);
 
 function updateEstimate() {
   const seconds = Number($("buffer_seconds").value);
