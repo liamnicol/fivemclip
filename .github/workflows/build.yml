@@ -123,12 +123,32 @@ jobs:
           "FIVEMCLIP_BUILD=$label" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Build label: $label"
 
+      # Without this the only symptom of a missing or misnamed secret is
+      # "Build installer failed", which says nothing about why.
+      - name: Check the signing key is present
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $key = $env:TAURI_SIGNING_PRIVATE_KEY
+          if (-not $key) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is not set. Add it under Settings, Secrets and variables, Actions - the name must match exactly."
+          }
+          if ($key -notmatch 'untrusted comment') {
+            throw "TAURI_SIGNING_PRIVATE_KEY does not look like a minisign key. Paste the whole contents of the key file, including the 'untrusted comment' line."
+          }
+          Write-Host "Signing key present ($($key.Length) characters)."
+
       - name: Build installer
         env:
           # Updates are signed so that compromising the GitHub account is not
           # enough to push code to everyone's machine - the signature has to
           # match a key the installed app already trusts.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The key was generated without one, but the variable still has to
+          # exist - the signer prompts interactively when it is absent, which
+          # on a runner just hangs or fails.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: cargo tauri build
 
       # --- Code signing --------------------------------------------------
