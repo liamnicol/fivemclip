@@ -80,6 +80,12 @@ jobs:
   installer:
     name: Windows installer
     needs: check
+    # Creating a release writes to the repository. The default GITHUB_TOKEN is
+    # read-only on repositories created since 2023, so without this the build
+    # succeeds and only the publish step fails - which looks like a broken
+    # release rather than a missing permission.
+    permissions:
+      contents: write
     # The expensive half. Runs for releases and on demand, not for every commit
     # on main - use "Run workflow" when you want something to install and try.
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
