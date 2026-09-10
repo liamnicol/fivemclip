@@ -56,9 +56,12 @@ the filename and the window renders blank. Pass data through state instead.
 
 **Never build a window from the main thread.** `build()` waits for the event
 loop, so calling it on the event loop thread deadlocks: blank window, frozen
-app, unkillable except from Task Manager. Sync Tauri commands run on the main
-thread - so any command that creates a window must be `async`. This does not
-reproduce on WebKitGTK.
+app, unkillable except from Task Manager.
+
+Marking the command `async` does **not** fix this - Tauri polls the future
+inline, and an async fn runs synchronously up to its first await, so the build
+still lands on `main`. Spawn an explicit thread. None of it reproduces on
+WebKitGTK.
 
 **Redaction defaults to a solid fill.** Pixelate and blur are reversible for
 text. A blur bug once made redacted text *more* legible than the original -

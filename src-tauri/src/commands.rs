@@ -410,11 +410,7 @@ pub async fn finish_region_capture(
     if settings.edit_after_region {
         // Straight into redaction: for anyone hiding names or plates, the
         // capture is only half the job and the library is a detour.
-        let _ = open_editor(
-            app.clone(),
-            state.clone(),
-            out.to_string_lossy().into_owned(),
-        );
+        let _ = open_editor(app.clone(), out.to_string_lossy().into_owned());
     }
 
     notify(
@@ -595,21 +591,39 @@ pub fn discard_session(state: State<AppState>) {
 pub const EDITOR_WINDOW: &str = "editor";
 
 /// Open the redaction editor on a screenshot.
+///
+/// Returns immediately and does the work on its own thread.
+///
+/// `WebviewWindowBuilder::build()` blocks until the event loop creates the
+/// window, so calling it *from* the event loop thread deadlocks: the window
+/// appears with a blank client area and the app stops responding entirely,
+/// tray Quit included.
+///
+/// Marking the command `async` is NOT enough. Tauri polls the future inline,
+/// and an async fn runs synchronously up to its first await, so the build still
+/// happened on `main` - confirmed from a log that showed the thread. Only an
+/// explicit thread moves it.
+///
+/// WebKitGTK tolerates the reentrant call, so none of this reproduces on Linux.
 #[tauri::command]
-pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+pub fn open_editor(app: AppHandle, path: String) -> Result<(), String> {
     crate::diagnostics::log(format!("open_editor: {path}"));
     let path = PathBuf::from(path);
-    if !library::is_managed(&state.settings.lock(), &path) {
-        return Err("That file is not in the FiveMClip folders.".into());
+
+    {
+        let state = app.state::<AppState>();
+        if !library::is_managed(&state.settings.lock(), &path) {
+            return Err("That file is not in the FiveMClip folders.".into());
+        }
+        app.asset_protocol_scope().allow_file(&path).ok();
+        *state.editor_target.lock() = Some(path.clone());
     }
-    app.asset_protocol_scope().allow_file(&path).ok();
-    *state.editor_target.lock() = Some(path.clone());
 
     if let Some(existing) = app.get_webview_window(EDITOR_WINDOW) {
         // Reuse the window rather than stacking them up, and tell it which
-        // image it is now looking at. show() as well as focus: a window that
-        // ended up hidden rather than closed would otherwise be focused
-        // invisibly and the button would look broken.
+        // image it is now looking at. show() as well as focus: a window left
+        // hidden rather than closed would otherwise be focused invisibly and
+        // the button would look broken.
         let _ = existing.emit("editor:open", path.to_string_lossy().into_owned());
         let _ = existing.show();
         let _ = existing.unminimize();
@@ -617,28 +631,29 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
         return Ok(());
     }
 
-    let built = crate::diagnostics::span("building the editor window", || {
-        tauri::WebviewWindowBuilder::new(
-            &app,
-            EDITOR_WINDOW,
-            tauri::WebviewUrl::App("editor.html".into()),
-        )
-        .title("Hide things - FiveMClip")
-        .inner_size(1100.0, 780.0)
-        .min_inner_size(640.0, 480.0)
-        .build()
+    std::thread::spawn(move || {
+        let built = crate::diagnostics::span("building the editor window", || {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                EDITOR_WINDOW,
+                tauri::WebviewUrl::App("editor.html".into()),
+            )
+            .title("Hide things - FiveMClip")
+            .inner_size(1100.0, 780.0)
+            .min_inner_size(640.0, 480.0)
+            .build()
+        });
+
+        match built {
+            Ok(_) => crate::diagnostics::log("editor window created"),
+            Err(e) => {
+                crate::diagnostics::log(format!("editor window failed: {e}"));
+                notify(&app, "Could not open the editor", &e.to_string());
+            }
+        }
     });
 
-    match built {
-        Ok(_) => {
-            crate::diagnostics::log("editor window created");
-            Ok(())
-        }
-        Err(e) => {
-            crate::diagnostics::log(format!("editor window failed: {e}"));
-            Err(format!("could not open the editor: {e}"))
-        }
-    }
+    Ok(())
 }
 
 /// Which image the editor should be showing.
