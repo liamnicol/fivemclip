@@ -107,15 +107,9 @@ fn run(app: &AppHandle, action: Action) {
             }
         }
         Action::RegionShot => {
-            // Opening a window has to happen on the main thread, and this
-            // handler is already on a worker.
-            let app = app.clone();
-            let _ = app.clone().run_on_main_thread(move || {
-                let state = app.state::<AppState>();
-                if let Err(e) = crate::commands::start_region_capture(app.clone(), state) {
-                    notify(&app, "Region capture failed", &e);
-                }
-            });
+            // Does its own threading: grabs the frame off the UI thread and
+            // hops to main only to create the window.
+            crate::commands::begin_region_capture(app.clone());
         }
         Action::ToggleSession => {
             let active = state

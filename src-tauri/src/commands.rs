@@ -191,19 +191,25 @@ pub fn reprobe(state: State<AppState>) -> Result<ProbeReport, String> {
     Ok(report)
 }
 
+/// Save the last `seconds` of buffer.
+///
+/// Async so Tauri runs it off the UI thread: stitching segments is disk-bound
+/// and can take a moment, and doing it on the thread that draws the window
+/// froze the app while it worked.
 #[tauri::command]
-pub fn save_clip(
-    app: AppHandle,
-    state: State<AppState>,
-    seconds: Option<u32>,
-) -> Result<String, String> {
-    let seconds = seconds.unwrap_or_else(|| state.settings.lock().buffer_seconds);
-    let mut guard = state.recorder.lock();
-    let recorder = guard
-        .as_mut()
-        .ok_or("The replay buffer has not been started yet.")?;
-    let path = recorder.save_clip(seconds)?;
-    drop(guard);
+pub async fn save_clip(app: AppHandle, seconds: Option<u32>) -> Result<String, String> {
+    let handle = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        let seconds = seconds.unwrap_or_else(|| state.settings.lock().buffer_seconds);
+        let mut guard = state.recorder.lock();
+        let recorder = guard
+            .as_mut()
+            .ok_or_else(|| "The replay buffer has not been started yet.".to_string())?;
+        recorder.save_clip(seconds)
+    })
+    .await
+    .map_err(|e| format!("saving was interrupted: {e}"))??;
 
     let name = path
         .file_name()
@@ -211,7 +217,8 @@ pub fn save_clip(
         .unwrap_or_default();
     notify(&app, "Clip saved", &name);
 
-    let pruned = fivemclip_capture::disk::prune(&state.settings.lock().clone());
+    let settings = app.state::<AppState>().settings.lock().clone();
+    let pruned = fivemclip_capture::disk::prune(&settings);
     if pruned.deleted > 0 {
         notify(
             &app,
@@ -270,37 +277,68 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
 /// against a live screen would let a notification pop up between the drag and
 /// the crop.
 #[tauri::command]
-pub fn start_region_capture(app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
-        let _ = existing.set_focus();
-        return Ok(());
-    }
+pub fn start_region_capture(app: AppHandle) {
+    begin_region_capture(app);
+}
 
-    let ffmpeg = state.ffmpeg()?.clone();
-    let settings = state.settings.lock().clone();
-    let pipeline = settings
-        .cached_pipeline
-        .as_deref()
-        .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
+/// Freeze the screen and open the selection overlay.
+///
+/// The screen is captured *first* and the overlay then shows that still image,
+/// so what the user drags a box around is exactly what they get. Selecting
+/// against a live screen would let a notification pop up between the drag and
+/// the crop.
+///
+/// All of it runs off the UI thread. Grabbing a frame means waiting on ffmpeg,
+/// and doing that on the thread that draws the window froze the whole app.
+pub fn begin_region_capture(app: AppHandle) {
+    std::thread::spawn(move || {
+        if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
+            let _ = existing.show();
+            let _ = existing.set_focus();
+            return;
+        }
 
-    let frame = shot::region_frame_path();
-    shot::capture_to(&ffmpeg, &settings, pipeline, &frame)?;
+        let state = app.state::<AppState>();
+        let prepared = (|| -> Result<(), String> {
+            let ffmpeg = state.ffmpeg()?.clone();
+            let settings = state.settings.lock().clone();
+            let pipeline = settings
+                .cached_pipeline
+                .as_deref()
+                .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
+            shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
+        })();
 
-    tauri::WebviewWindowBuilder::new(
-        &app,
-        REGION_WINDOW,
-        tauri::WebviewUrl::App("region.html".into()),
-    )
-    .title("Select a region")
-    .fullscreen(true)
-    .decorations(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .build()
-    .map_err(|e| format!("could not open the selection overlay: {e}"))?;
+        if let Err(e) = prepared {
+            notify(&app, "Could not capture the screen", &e);
+            return;
+        }
 
-    Ok(())
+        // Window creation belongs to the main thread.
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let built = tauri::WebviewWindowBuilder::new(
+                &handle,
+                REGION_WINDOW,
+                tauri::WebviewUrl::App("region.html".into()),
+            )
+            .title("Select a region")
+            .fullscreen(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .build();
+
+            if let Err(e) = built {
+                notify(
+                    &handle,
+                    "Could not open the selection overlay",
+                    &e.to_string(),
+                );
+            }
+        });
+    });
 }
 
 #[derive(Serialize)]
@@ -474,14 +512,24 @@ fn image_dimensions(
     Err("could not read the image size".into())
 }
 
+/// Begin keeping every segment.
+///
+/// Async for the same reason as saving: starting a session restarts ffmpeg,
+/// and waiting on a process is not work for the thread that draws the window.
 #[tauri::command]
-pub fn start_session(app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    let mut guard = state.recorder.lock();
-    let recorder = guard
-        .as_mut()
-        .ok_or("The replay buffer has not been started yet.")?;
-    recorder.start_session()?;
-    drop(guard);
+pub async fn start_session(app: AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        let mut guard = state.recorder.lock();
+        let recorder = guard
+            .as_mut()
+            .ok_or_else(|| "The replay buffer has not been started yet.".to_string())?;
+        recorder.start_session()
+    })
+    .await
+    .map_err(|e| format!("starting the session was interrupted: {e}"))??;
+
     notify(
         &app,
         "Session recording started",
@@ -491,12 +539,20 @@ pub fn start_session(app: AppHandle, state: State<AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn stop_session(app: AppHandle, state: State<AppState>) -> Result<String, String> {
-    let saved = {
+pub async fn stop_session(app: AppHandle) -> Result<String, String> {
+    let handle = app.clone();
+    // Stitching hours of segments is the longest thing this app does; blocking
+    // the UI for it would look exactly like a hang.
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
         let mut guard = state.recorder.lock();
-        let recorder = guard.as_mut().ok_or("No session is being recorded.")?;
+        let recorder = guard
+            .as_mut()
+            .ok_or_else(|| "No session is being recorded.".to_string())?;
         recorder.stop_session()
-    };
+    })
+    .await
+    .map_err(|e| format!("saving the session was interrupted: {e}"))?;
 
     match saved {
         Ok(path) => {
@@ -506,7 +562,8 @@ pub fn stop_session(app: AppHandle, state: State<AppState>) -> Result<String, St
                 .unwrap_or_default();
             notify(&app, "Session saved", &name);
 
-            let pruned = fivemclip_capture::disk::prune(&state.settings.lock().clone());
+            let settings = app.state::<AppState>().settings.lock().clone();
+            let pruned = fivemclip_capture::disk::prune(&settings);
             if pruned.deleted > 0 {
                 notify(
                     &app,

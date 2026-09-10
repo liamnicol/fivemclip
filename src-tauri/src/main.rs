@@ -177,22 +177,39 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                     .open_path(dir.to_string_lossy().into_owned(), None::<&str>);
             }
             "quit" => {
-                let state = app.state::<AppState>();
-                // A session in progress is footage the user has asked to keep;
-                // save it rather than losing it to a menu click.
-                let saving = state
-                    .recorder
-                    .lock()
-                    .as_ref()
-                    .map(|r| r.session_active())
-                    .unwrap_or(false);
-                if saving {
-                    if let Some(recorder) = state.recorder.lock().as_mut() {
-                        let _ = recorder.stop_session();
+                // Cleanup happens off the UI thread and against a deadline.
+                // Doing it inline meant a slow ffmpeg shutdown froze the menu
+                // that had just been clicked, leaving the app unkillable
+                // except from Task Manager - the exact failure the Quit item
+                // exists to avoid.
+                //
+                // Exiting without a clean stop is safe now: ffmpeg is in a job
+                // object that the kernel tears down with this process.
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let deadline = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(20));
+                        let _ = deadline;
+                        std::process::exit(0);
+                    });
+
+                    let state = app.state::<AppState>();
+                    let saving = state
+                        .recorder
+                        .lock()
+                        .as_ref()
+                        .map(|r| r.session_active())
+                        .unwrap_or(false);
+                    if saving {
+                        // Footage the user asked to keep; worth the wait.
+                        if let Some(recorder) = state.recorder.lock().as_mut() {
+                            let _ = recorder.stop_session();
+                        }
                     }
-                }
-                state.stop_buffer(true);
-                app.exit(0);
+                    state.stop_buffer(true);
+                    app.exit(0);
+                });
             }
             _ => {}
         })
