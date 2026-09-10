@@ -724,7 +724,136 @@ pub fn save_edited_image(
             let _ = app.clipboard().write_image(&image);
         }
     }
+    library_changed(&app);
     Ok(target.to_string_lossy().into_owned())
+}
+
+/// Tell the main window its library is stale.
+///
+/// The editor and the trimmer are separate windows, so the grid behind them has
+/// no idea a file was just rewritten - it would keep showing the untrimmed
+/// thumbnail until someone thought to press Refresh.
+fn library_changed(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.emit("library:changed", ());
+    }
+}
+
+pub const TRIM_WINDOW: &str = "trim";
+
+/// Open the trimmer on a clip or a session recording.
+///
+/// Built on its own thread for the same reason `open_editor` is - see the note
+/// there. It is not optional and it does not reproduce on Linux.
+#[tauri::command]
+pub fn open_trimmer(app: AppHandle, path: String) -> Result<(), String> {
+    crate::diagnostics::log(format!("open_trimmer: {path}"));
+    let path = PathBuf::from(path);
+
+    {
+        let state = app.state::<AppState>();
+        if !library::is_managed(&state.settings.lock(), &path) {
+            return Err("That file is not in the FiveMClip folders.".into());
+        }
+        app.asset_protocol_scope().allow_file(&path).ok();
+        *state.trim_target.lock() = Some(path.clone());
+    }
+
+    if let Some(existing) = app.get_webview_window(TRIM_WINDOW) {
+        let _ = existing.emit("trim:open", path.to_string_lossy().into_owned());
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    std::thread::spawn(move || {
+        let built = crate::diagnostics::span("building the trim window", || {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                TRIM_WINDOW,
+                tauri::WebviewUrl::App("trim.html".into()),
+            )
+            .title("Trim clip - FiveMClip")
+            .inner_size(940.0, 700.0)
+            .min_inner_size(620.0, 520.0)
+            .build()
+        });
+
+        match built {
+            Ok(_) => crate::diagnostics::log("trim window created"),
+            Err(e) => {
+                crate::diagnostics::log(format!("trim window failed: {e}"));
+                notify(&app, "Could not open the trimmer", &e.to_string());
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// Which clip the trimmer should be showing.
+#[tauri::command]
+pub fn trim_target(state: State<AppState>) -> Option<String> {
+    state
+        .trim_target
+        .lock()
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Cut a clip down to the selected range.
+///
+/// Async, and the ffmpeg run is moved off the async runtime as well: this is
+/// the one operation in the app that re-encodes, so it is measured in seconds
+/// rather than milliseconds.
+#[tauri::command]
+pub async fn trim_clip(
+    app: AppHandle,
+    path: String,
+    start: f64,
+    end: f64,
+    replace: bool,
+    fast: bool,
+) -> Result<String, String> {
+    let handle = app.clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<AppState>();
+        let source = PathBuf::from(path);
+        let (ffmpeg, settings, pipeline) = {
+            let ffmpeg = state.ffmpeg()?.clone();
+            let settings = state.settings.lock().clone();
+            let pipeline = settings
+                .cached_pipeline
+                .as_deref()
+                .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
+            (ffmpeg, settings, pipeline)
+        };
+        if !library::is_managed(&settings, &source) {
+            return Err("That file is not in the FiveMClip folders.".to_string());
+        }
+        fivemclip_capture::trim::trim(
+            &ffmpeg,
+            &settings,
+            pipeline,
+            &source,
+            &fivemclip_capture::trim::Request {
+                start,
+                end,
+                replace,
+                fast,
+            },
+        )
+    })
+    .await
+    .map_err(|e| format!("trimming was interrupted: {e}"))??;
+
+    // A trimmed copy is a different file from the one that was uploaded, and a
+    // replaced one is different content under the same name. Either way the
+    // stored link no longer describes it.
+    app.state::<AppState>().links.forget(&saved);
+    library_changed(&app);
+    Ok(saved.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

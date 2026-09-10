@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trim clip</title>
+    <link rel="stylesheet" href="trim.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="readout">
+        <span class="pill">Keeping <strong id="selected">—</strong></span>
+        <span class="muted" id="range">—</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" id="reset" disabled>Reset</button>
+      <button class="btn btn-ghost" id="fast">Fast trim</button>
+      <button class="btn" id="save-copy">Save a copy</button>
+      <button class="btn btn-primary" id="save">Save</button>
+    </header>
+
+    <main id="stage">
+      <video id="video" preload="metadata" playsinline></video>
+      <p class="loading" id="loading">Loading…</p>
+    </main>
+
+    <section class="timeline" id="timeline" hidden>
+      <div class="track" id="track">
+        <div class="outside" id="outside-left"></div>
+        <div class="outside" id="outside-right"></div>
+        <div class="selection" id="selection"></div>
+        <div class="playhead" id="playhead"></div>
+        <button class="handle" id="handle-start" aria-label="Start of the clip"></button>
+        <button class="handle" id="handle-end" aria-label="End of the clip"></button>
+      </div>
+      <!-- Labelled, because three bare clocks under a timeline read as being
+           in order, and the middle one is the playhead rather than a midpoint. -->
+      <div class="times">
+        <span><span class="tag">In</span> <span id="time-start">0:00</span></span>
+        <span class="muted"><span class="tag">Playing</span> <span id="time-now">0:00</span></span>
+        <span><span class="tag">Out</span> <span id="time-end">0:00</span></span>
+      </div>
+      <div class="transport">
+        <button class="btn" id="play">Play selection</button>
+        <button class="btn btn-ghost" id="set-start">Start here</button>
+        <button class="btn btn-ghost" id="set-end">End here</button>
+      </div>
+    </section>
+
+    <p class="note" id="note">
+      <strong>Save</strong> re-encodes. It takes a few seconds and the part you
+      cut is genuinely gone.
+      <strong>Fast trim</strong> is instant and does not touch the picture
+      quality, but up to two seconds of what you cut stays inside the file where
+      some players will still show it — fine for tidying up a highlight, not for
+      cutting something out.
+    </p>
+
+    <footer class="hint">
+      Drag the handles, or scrub and press <kbd>I</kbd> / <kbd>O</kbd> ·
+      <kbd>Space</kbd> play · <kbd>Esc</kbd> close
+    </footer>
+
+    <script src="trim.js"></script>
+  </body>
+</html>

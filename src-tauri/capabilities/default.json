@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "region",
-    "editor"
+    "editor",
+    "trim"
   ],
   "permissions": [
     "core:default",

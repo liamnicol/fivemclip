@@ -1,4 +1,5 @@
 const { invoke, convertFileSrc } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 const dialog = window.__TAURI__.dialog;
 
 let settings = null;
@@ -286,6 +287,10 @@ document.querySelectorAll(".chip").forEach((chip) => {
 
 $("btn-refresh").addEventListener("click", refreshLibrary);
 
+// The editor and the trimmer write from their own windows, so the grid is told
+// rather than left showing a thumbnail of a file that no longer looks like it.
+listen("library:changed", () => refreshLibrary());
+
 async function refreshLibrary() {
   libraryItems = await invoke("library_items").catch(() => []);
   renderLibrary();
@@ -312,7 +317,8 @@ function renderLibrary() {
     // An already-uploaded screenshot keeps its link instead of offering the
     // upload again - a second upload would just orphan the first one on ImgBB.
     const share = isVideo
-      ? `<button class="btn" data-act="youtube">To YouTube</button>`
+      ? `<button class="btn" data-act="trim">Trim</button>
+         <button class="btn" data-act="youtube">To YouTube</button>`
       : `<button class="btn" data-act="edit">Edit</button>
          ${
            item.link
@@ -360,6 +366,9 @@ async function handleItemAction(action, item, button) {
       break;
     case "edit":
       await call("open_editor", { path: item.path });
+      break;
+    case "trim":
+      await call("open_trimmer", { path: item.path });
       break;
     case "youtube":
       await call("youtube_handoff", { path: item.path });

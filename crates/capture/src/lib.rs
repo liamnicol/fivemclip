@@ -10,6 +10,7 @@ pub mod reaper;
 pub mod ring;
 pub mod shot;
 pub mod sysprobe;
+pub mod trim;
 
 pub use config::{MicMode, Settings};
 pub use ffmpeg::{Pipeline, ProbeReport};

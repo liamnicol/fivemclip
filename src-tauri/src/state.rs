@@ -23,6 +23,9 @@ pub struct AppState {
     /// so a query string becomes part of the filename and the window loads
     /// nothing at all.
     pub editor_target: Mutex<Option<PathBuf>>,
+    /// Clip the trim window should open. Separate from `editor_target` for the
+    /// same reason it exists at all: a window cannot be told through its URL.
+    pub trim_target: Mutex<Option<PathBuf>>,
     pub manually_stopped: AtomicBool,
     /// Set when recording was stopped because the drive ran low, so the
     /// watchdog knows to wait for real headroom rather than restarting into
@@ -50,6 +53,7 @@ impl AppState {
             links: Links::load(links_path),
             settings_path,
             editor_target: Mutex::new(None),
+            trim_target: Mutex::new(None),
             manually_stopped: AtomicBool::new(false),
             paused_for_disk: AtomicBool::new(false),
         }

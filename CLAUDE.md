@@ -67,6 +67,13 @@ WebKitGTK.
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
 
+**A copy trim plays from the right frame and still contains the wrong ones.**
+`-c copy` cannot start anywhere but a keyframe, but the MP4 edit list moves
+playback to the exact requested time - so it *looks* frame-accurate while
+physically keeping up to two seconds of what was cut, which `-ignore_editlist`
+brings straight back. That is why the default re-encodes. Measured, not
+assumed; `trim::ffmpeg_tests::a_fast_trim_keeps_what_it_appears_to_cut` pins it.
+
 **The editor composes at full image size, then blits the crop.** Pixelate and
 blur read pixels back out of the canvas they are painting on, so painting into
 a cropped canvas reads the wrong source rectangle. Marks are stored in original
@@ -77,6 +84,14 @@ image coordinates; the crop is just another undoable mark.
 `ui/` is plain HTML, so it renders in any browser with `window.__TAURI__`
 stubbed. This caught the blur bug above. Serve `ui/` over HTTP - `file://`
 blocks image loads - and drive it with Playwright.
+
+The server must honour Range requests. `python -m http.server` does not, so a
+`<video>` reports `seekable=[0,0]`, every seek silently does nothing, and the
+trim window looks broken when it is not.
+
+`crates/capture/src/trim.rs` has tests that run a real ffmpeg. They skip unless
+`FIVEMCLIP_TEST_FFMPEG` and `FIVEMCLIP_TEST_CLIP` are set, so CI stays green
+without one.
 
 ## Diagnostics
 

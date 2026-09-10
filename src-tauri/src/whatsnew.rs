@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.1.6",
+        lines: &[
+            "Clips and sessions can be trimmed: Trim in the Library, drag the two handles, save.",
+            "Save re-encodes so the part you cut is genuinely gone. Fast trim is instant but leaves up to two seconds of it inside the file - use it for tidying a highlight, not for cutting something out.",
+            "The Library refreshes itself after an edit or a trim instead of showing the old thumbnail until you press Refresh.",
+        ],
+    },
+    Release {
         version: "0.1.5",
         lines: &[
             "The screenshot editor can mark things up as well as hide them: Arrow, Box and Crop, alongside the redaction tools.",

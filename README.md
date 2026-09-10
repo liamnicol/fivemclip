@@ -48,6 +48,7 @@ your case.
 - **Screenshots** on a separate hotkey, full screen or a rectangle you drag.
 - **A screenshot editor** that hides things (black out, pixelate, blur) and
   marks them up (arrow, box, crop).
+- **Clip trimming** — drag two handles and keep only the part that matters.
 - **Hardware encoding** via NVENC, AMD AMF or Intel Quick Sync, captured with
   DXGI Desktop Duplication. The app tests every combination on first launch and
   keeps whichever actually works on that PC.
@@ -156,8 +157,8 @@ by accident.
 ## Your library
 
 The Library tab lists everything the app has saved, newest first, filtered by
-clips, sessions or screenshots. Each one can be opened, shared or deleted, and
-screenshots can be edited.
+clips, sessions or screenshots. Each one can be opened, shared or deleted; clips
+and sessions can be trimmed, and screenshots edited.
 
 Deleting from here does not go via the Recycle Bin.
 
@@ -175,6 +176,32 @@ Settings → Disk space:
   are deleted once the total goes over. Sessions are never touched, and nothing
   goes to the Recycle Bin. It is off by default because quietly deleting
   somebody's recordings is not something to opt them into.
+
+## Trimming a clip
+
+**Trim** in the Library opens the clip with a timeline under it. Drag the two
+handles, or scrub and press `I` and `O`, then save. **Play selection** plays
+back exactly what you are about to keep. Arrow keys nudge a handle by a tenth
+of a second, `Shift` by a whole one.
+
+There are two ways to save it, and the difference matters more than it looks:
+
+| | Speed | Picture | The part you cut |
+| --- | --- | --- | --- |
+| **Save** / **Save a copy** | a few seconds | re-encoded once | **gone** |
+| **Fast trim** | instant | untouched | still in the file |
+
+A stream copy can only start at a keyframe, and these clips carry one every two
+seconds. The trimmed file says where playback should begin, so it *plays* from
+exactly the right frame — but up to two seconds of what you cut is still
+physically inside it, and a player that ignores that instruction will show it.
+
+So **Fast trim** is right for tidying up a highlight, and wrong for cutting
+something out. If you are trimming to remove a name, a plate or staff chat, use
+**Save**. It is the same trap as pixelating a name: it looks removed and is not.
+
+Fast trim exists because re-encoding a three hour session recording is not
+something anyone is going to sit through.
 
 ## Screenshots
 

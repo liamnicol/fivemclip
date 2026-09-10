@@ -1,0 +1,137 @@
+[hidden] { display: none !important; }
+
+:root {
+  --bg: #0e1016;
+  --panel: #161a24;
+  --panel-2: #1d2230;
+  --line: #272d3d;
+  --text: #eef1f7;
+  --muted: #8b93a7;
+  --accent: #e53a35;
+  --accent-dim: #b32d29;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+body { display: flex; flex-direction: column; }
+
+.bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 10px 14px; flex: none;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+
+.readout { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.pill {
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 13px;
+}
+.pill strong { font-variant-numeric: tabular-nums; }
+
+.btn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px;
+  padding: 8px 15px; font: inherit; cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: #262c3c; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-ghost { background: transparent; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: #f04b45; }
+
+#stage {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  padding: 16px 20px; background: #08090d;
+}
+video { max-width: 100%; max-height: 100%; display: block; background: #000; }
+.loading { color: var(--muted); }
+
+/* ---------- timeline ---------- */
+
+.timeline { flex: none; padding: 14px 20px 4px; background: var(--panel); }
+
+/* The track is the whole width of the clip; the selection is what survives.
+   Everything outside it is dimmed rather than hidden, so the handles always
+   have somewhere to be dragged back to. */
+.track {
+  position: relative; height: 44px;
+  background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer; touch-action: none;
+}
+.outside {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(8, 10, 15, .62);
+  pointer-events: none;
+}
+#outside-left { left: 0; }
+#outside-right { right: 0; }
+.selection {
+  position: absolute; top: 0; bottom: 0;
+  border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+  background: rgba(229, 58, 53, .12);
+  pointer-events: none;
+}
+.playhead {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .8);
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute; top: -4px; bottom: -4px; width: 14px;
+  margin-left: -7px; padding: 0;
+  background: var(--accent); border: 1px solid var(--accent-dim);
+  border-radius: 5px; cursor: ew-resize; touch-action: none;
+}
+.handle::after {
+  content: ""; position: absolute; inset: 0;
+  /* Two grip lines, so it reads as something to drag. */
+  background:
+    linear-gradient(#fff, #fff) 4px 50% / 1.5px 14px no-repeat,
+    linear-gradient(#fff, #fff) 8px 50% / 1.5px 14px no-repeat;
+  opacity: .75;
+}
+.handle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.times {
+  display: flex; justify-content: space-between;
+  margin-top: 8px; font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.tag {
+  color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .6px;
+}
+
+.transport { display: flex; gap: 8px; margin-top: 12px; }
+.transport .btn { padding: 6px 12px; font-size: 13px; }
+
+.note {
+  margin: 0; padding: 10px 20px; flex: none;
+  color: var(--muted); font-size: 12.5px; line-height: 1.5;
+}
+
+.hint {
+  margin: 0; padding: 9px 16px; flex: none;
+  background: var(--panel); border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 12.5px; text-align: center;
+}
+
+kbd {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px;
+  font: 600 11.5px/1 ui-monospace, Consolas, monospace;
+}
