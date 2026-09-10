@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 parking_lot = "0.12"
 chrono = "0.4"
+# The editor hands back a finished PNG; base64 keeps that transfer boring.
+base64 = "0.22"
 # native-tls resolves to schannel on Windows: the OS trust store, no bundled
 # root certificates to go stale, and no C toolchain in the build.
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }

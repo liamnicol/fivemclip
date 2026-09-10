@@ -5,7 +5,7 @@ use fivemclip_capture::ffmpeg::ProbeReport;
 use fivemclip_capture::sysprobe::{self, MonitorInfo};
 use fivemclip_capture::{shot, RecorderStatus};
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -357,6 +357,17 @@ pub async fn finish_region_capture(
     }
 
     let _ = std::fs::remove_file(&frame);
+
+    if settings.edit_after_region {
+        // Straight into redaction: for anyone hiding names or plates, the
+        // capture is only half the job and the library is a detour.
+        let _ = open_editor(
+            app.clone(),
+            state.clone(),
+            out.to_string_lossy().into_owned(),
+        );
+    }
+
     notify(
         &app,
         "Region captured",
@@ -511,6 +522,107 @@ pub fn discard_session(state: State<AppState>) {
     if let Some(recorder) = state.recorder.lock().as_mut() {
         recorder.discard_session();
     }
+}
+
+pub const EDITOR_WINDOW: &str = "editor";
+
+/// Open the redaction editor on a screenshot.
+#[tauri::command]
+pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if !library::is_managed(&state.settings.lock(), &path) {
+        return Err("That file is not in the FiveMClip folders.".into());
+    }
+    app.asset_protocol_scope().allow_file(&path).ok();
+
+    if let Some(existing) = app.get_webview_window(EDITOR_WINDOW) {
+        // Reuse the window rather than stacking them up, and tell it which
+        // image it is now looking at.
+        let _ = existing.emit("editor:open", path.to_string_lossy().into_owned());
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        EDITOR_WINDOW,
+        tauri::WebviewUrl::App(
+            format!("editor.html?path={}", encode_query(&path.to_string_lossy())).into(),
+        ),
+    )
+    .title("Hide things - FiveMClip")
+    .inner_size(1100.0, 780.0)
+    .min_inner_size(640.0, 480.0)
+    .build()
+    .map_err(|e| format!("could not open the editor: {e}"))?;
+    Ok(())
+}
+
+fn encode_query(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Write the edited image back.
+///
+/// `replace` overwrites the original, which is what redaction usually wants:
+/// leaving an unredacted copy on disk defeats the point of having hidden
+/// anything. Saving a copy is offered for when the original still matters.
+#[tauri::command]
+pub fn save_edited_image(
+    app: AppHandle,
+    state: State<AppState>,
+    path: String,
+    png_base64: String,
+    replace: bool,
+) -> Result<String, String> {
+    use base64::Engine;
+
+    let source = PathBuf::from(&path);
+    let settings = state.settings.lock().clone();
+    if !library::is_managed(&settings, &source) {
+        return Err("That file is not in the FiveMClip folders.".into());
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("the edited image was malformed: {e}"))?;
+
+    // Always PNG on the way out: a redacted image re-encoded as JPEG picks up
+    // ringing around the edges of solid blocks, which is ugly and, at the
+    // margins, leaks a hint of what was underneath.
+    let target = if replace {
+        source.with_extension("png")
+    } else {
+        let stem = source
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Shot".into());
+        source.with_file_name(format!("{stem}_edited.png"))
+    };
+
+    std::fs::write(&target, &bytes).map_err(|e| format!("could not save: {e}"))?;
+
+    // Replacing a JPEG leaves the original behind under its old extension,
+    // which is exactly the unredacted copy we were trying not to keep.
+    if replace && source != target {
+        let _ = std::fs::remove_file(&source);
+    }
+
+    if settings.copy_screenshot_to_clipboard {
+        if let Ok(image) = tauri::image::Image::from_path(&target) {
+            let _ = app.clipboard().write_image(&image);
+        }
+    }
+    Ok(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hide things</title>
+    <link rel="stylesheet" href="editor.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="tools" role="radiogroup" aria-label="Redaction tool">
+        <button class="tool is-active" data-tool="black" role="radio" aria-checked="true">
+          <span class="swatch swatch-black"></span>Black out
+        </button>
+        <button class="tool" data-tool="pixelate" role="radio" aria-checked="false">
+          <span class="swatch swatch-pixel"></span>Pixelate
+        </button>
+        <button class="tool" data-tool="blur" role="radio" aria-checked="false">
+          <span class="swatch swatch-blur"></span>Blur
+        </button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <button class="btn btn-ghost" id="undo" disabled>Undo</button>
+      <button class="btn btn-ghost" id="clear" disabled>Clear all</button>
+      <button class="btn" id="save-copy">Save a copy</button>
+      <button class="btn btn-primary" id="save">Save</button>
+    </header>
+
+    <p class="warning" id="warning" hidden>
+      Pixelate and blur can sometimes be reversed — text especially, because the
+      font is known. To hide a real name, address or plate, use
+      <strong>Black out</strong>.
+    </p>
+
+    <main id="stage">
+      <canvas id="canvas"></canvas>
+      <p class="loading" id="loading">Loading…</p>
+    </main>
+
+    <footer class="hint">
+      Drag over anything you want hidden · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo ·
+      <kbd>Esc</kbd> close
+    </footer>
+
+    <script src="editor.js"></script>
+  </body>
+</html>

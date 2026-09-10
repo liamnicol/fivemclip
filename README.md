@@ -69,6 +69,31 @@ and that copy behaves like an installed one.
 
 All three are rebindable in Settings.
 
+## Hiding things in screenshots
+
+Screenshots have a **Hide things** button in the Library, and region captures
+can open it automatically (Settings → Screenshots). Drag a box over anything
+that should not be shared - a name, a plate, staff chat, a warrant reference.
+
+Three tools, and the difference between them matters:
+
+| | What it does | Safe for real details? |
+| --- | --- | --- |
+| **Black out** | Solid fill | **Yes** |
+| Pixelate | Coarse blocks | No |
+| Blur | Heavy blur | No |
+
+**Pixelation and blur can be reversed.** Tools exist that reconstruct
+pixelated text when the font is known - which for a game interface it always
+is - and heavy blur is better but not a guarantee. For a real name, address,
+plate or case reference, use **Black out**; it is the default for that reason.
+Pixelate and blur are there for when you want to obscure something without the
+screenshot looking censored.
+
+Saving overwrites the original, so an unredacted copy is not left sitting in
+your screenshots folder. **Save a copy** keeps both, when the original still
+matters.
+
 ## Sharing
 
 ### ImgBB (screenshots)

@@ -4,7 +4,8 @@
   "description": "Permissions for the FiveMClip main window.",
   "windows": [
     "main",
-    "region"
+    "region",
+    "editor"
   ],
   "permissions": [
     "core:default",

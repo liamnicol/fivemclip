@@ -300,7 +300,8 @@ function renderLibrary() {
     const when = new Date(item.modified_ms).toLocaleString();
     const share = isVideo
       ? `<button class="btn" data-act="youtube">To YouTube</button>`
-      : `<button class="btn" data-act="imgbb">Upload</button>`;
+      : `<button class="btn" data-act="edit">Hide things</button>
+         <button class="btn" data-act="imgbb">Upload</button>`;
 
     card.innerHTML = `
       ${thumb}
@@ -334,6 +335,9 @@ async function handleItemAction(action, item, button) {
   switch (action) {
     case "open":
       await call("open_item", { path: item.path });
+      break;
+    case "edit":
+      await call("open_editor", { path: item.path });
       break;
     case "youtube":
       await call("youtube_handoff", { path: item.path });
@@ -450,6 +454,7 @@ function applySettings(next) {
   $("capture_cursor").checked = next.capture_cursor;
   $("screenshot_jpeg").checked = next.screenshot_jpeg;
   $("copy_screenshot_to_clipboard").checked = next.copy_screenshot_to_clipboard;
+  $("edit_after_region").checked = next.edit_after_region;
   $("mic_mode").value = next.mic_mode;
   $("mic_gain_db").value = next.mic_gain_db;
   $("system_gain_db").value = next.system_gain_db;
@@ -493,6 +498,7 @@ function collectSettings() {
     capture_cursor: $("capture_cursor").checked,
     screenshot_jpeg: $("screenshot_jpeg").checked,
     copy_screenshot_to_clipboard: $("copy_screenshot_to_clipboard").checked,
+    edit_after_region: $("edit_after_region").checked,
     mic_mode: $("mic_mode").value,
     mic_gain_db: Number($("mic_gain_db").value),
     system_gain_db: Number($("system_gain_db").value),

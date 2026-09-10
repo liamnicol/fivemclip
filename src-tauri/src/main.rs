@@ -53,6 +53,8 @@ fn main() {
             commands::delete_item,
             commands::reveal_item,
             commands::open_item,
+            commands::open_editor,
+            commands::save_edited_image,
             commands::open_output_folder,
             commands::upload_imgbb,
             commands::youtube_handoff,

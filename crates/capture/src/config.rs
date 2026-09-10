@@ -32,6 +32,12 @@ pub struct Settings {
     /// Put the image on the clipboard as well as on disk. For a region grab
     /// this is usually the whole point - the file is the backup copy.
     pub copy_screenshot_to_clipboard: bool,
+    /// Open the redaction editor straight after a region capture.
+    ///
+    /// Off by default - most screenshots are shared as-is - but for anyone
+    /// routinely hiding names, plates or staff chat it saves a trip through
+    /// the library every single time.
+    pub edit_after_region: bool,
     /// JPEG quality, 2 (best) to 31 (worst) in ffmpeg's scale.
     pub screenshot_quality: u32,
 
@@ -95,6 +101,7 @@ impl Default for Settings {
             capture_cursor: false,
             screenshot_jpeg: true,
             copy_screenshot_to_clipboard: true,
+            edit_after_region: false,
             screenshot_quality: 3,
             mic_mode: MicMode::Mixed,
             mic_gain_db: 0.0,
