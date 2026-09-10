@@ -67,6 +67,12 @@ WebKitGTK.
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
 
+**A session is MPEG-TS segments until it is stopped.** Nothing is ever written
+to the session file while recording - it is assembled from the ring afterwards.
+So the output container buys no crash safety, which is why sessions moved from
+MKV to MP4. `.mkv` stays in the library's extension list for sessions recorded
+before that; dropping it would look like the app had deleted them.
+
 **A copy trim plays from the right frame and still contains the wrong ones.**
 `-c copy` cannot start anywhere but a keyframe, but the MP4 edit list moves
 playback to the exact requested time - so it *looks* frame-accurate while

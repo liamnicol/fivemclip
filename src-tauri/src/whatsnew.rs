@@ -25,6 +25,8 @@ pub const RELEASES: &[Release] = &[
             "Clips and sessions can be trimmed: Trim in the Library, drag the two handles, save.",
             "Save re-encodes so the part you cut is genuinely gone. Fast trim is instant but leaves up to two seconds of it inside the file - use it for tidying a highlight, not for cutting something out.",
             "The Library refreshes itself after an edit or a trim instead of showing the old thumbnail until you press Refresh.",
+            "Sessions save as MP4 instead of MKV, so Windows will preview them and anywhere you upload them will take them. Sessions you already have keep working.",
+            "Library cards say whether they are a clip, a session or a screenshot - three recordings of the same scene were three identical thumbnails.",
         ],
     },
     Release {

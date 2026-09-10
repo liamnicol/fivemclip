@@ -392,10 +392,15 @@ impl Recorder {
 
     /// Finish the session and write it out.
     ///
-    /// Matroska rather than MP4: MP4 writes its index last, so a session ending
-    /// in a game crash or a power cut leaves an unplayable file. Matroska stays
-    /// playable however it ends, which for a recording that may run for hours
-    /// matters more than the container being universally convenient.
+    /// MP4, the same as a clip. This used to be Matroska, on the reasoning that
+    /// MP4 writes its index last and so a session ending in a crash would leave
+    /// an unplayable file - but a session is never written to this file while
+    /// it records. It lives as MPEG-TS segments in the ring and is only
+    /// assembled here, after recording has already stopped, so the container
+    /// choice buys no crash safety at all. What it did cost was a file Explorer
+    /// will not thumbnail and half the web will not accept.
+    ///
+    /// Sessions already on disk keep working: the library still lists .mkv.
     pub fn stop_session(&mut self) -> Result<PathBuf, String> {
         let session = self.session.take().ok_or("No session is being recorded.")?;
 
@@ -417,9 +422,13 @@ impl Recorder {
 
         let dir = self.settings.sessions_dir();
         fs::create_dir_all(&dir).map_err(|e| format!("could not create sessions folder: {e}"))?;
-        let out = dir.join(format!("Session_{}.mkv", session.label));
+        let out = dir.join(format!("Session_{}.mp4", session.label));
 
-        match concat_segments(&self.ffmpeg, &ring, &segments, &out) {
+        // No faststart. It moves the index to the front by rewriting the whole
+        // file, which is nothing on a ten second clip and minutes on a session
+        // that ran all evening - and a session is watched off the local disk,
+        // not streamed while it downloads.
+        match concat_segments(&self.ffmpeg, &ring, &segments, &out, false) {
             Ok(()) => {
                 if was_running {
                     let _ = self.start();
@@ -480,7 +489,9 @@ impl Recorder {
             chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
         ));
 
-        concat_segments(&self.ffmpeg, &ring, &segments, &out)
+        // Faststart here: a clip is short enough for the extra pass to be
+        // free, and it is the file that gets uploaded and streamed.
+        concat_segments(&self.ffmpeg, &ring, &segments, &out, true)
             .map_err(|e| format!("Could not save the clip: {e}"))?;
 
         Ok(out)
@@ -613,6 +624,7 @@ fn concat_segments(
     ring: &Path,
     segments: &[(PathBuf, std::time::SystemTime)],
     out: &Path,
+    faststart: bool,
 ) -> Result<(), String> {
     let list_path = ring.join(format!(
         "concat-{}.txt",
@@ -656,13 +668,11 @@ fn concat_segments(
     ]);
     command.arg(&list_path).args(["-c", "copy"]);
     if wants_mp4 {
-        command.args([
-            // AAC carried in MPEG-TS uses ADTS framing, which MP4 rejects.
-            "-bsf:a",
-            "aac_adtstoasc",
-            "-movflags",
-            "+faststart",
-        ]);
+        // AAC carried in MPEG-TS uses ADTS framing, which MP4 rejects.
+        command.args(["-bsf:a", "aac_adtstoasc"]);
+        if faststart {
+            command.args(["-movflags", "+faststart"]);
+        }
     }
 
     let status = command

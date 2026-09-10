@@ -202,10 +202,26 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
   border-radius: var(--radius); overflow: hidden;
   display: flex; flex-direction: column;
 }
+.item .shot { position: relative; }
 .item .thumb {
   aspect-ratio: 16 / 9; width: 100%; object-fit: cover;
   background: #0a0c11; display: block; border: 0;
 }
+
+/* Which of the three this is. A clip, a session and a screenshot of the same
+   scene are otherwise the same picture three times. */
+.item .kind {
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .5px;
+  background: rgba(8, 10, 15, .78);
+  border: 1px solid rgba(255, 255, 255, .16);
+  backdrop-filter: blur(4px);
+}
+.item .kind-session { color: #f0a92a; border-color: rgba(240, 169, 42, .45); }
+.item .kind-clip { color: #ff6b66; border-color: rgba(229, 58, 53, .5); }
+.item .kind-screenshot { color: #8ecdf5; border-color: rgba(120, 190, 240, .45); }
 .item .meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
 .item .name { font-size: 13px; font-weight: 600; word-break: break-all; }
 .item .sub { font-size: 12px; color: var(--muted); }

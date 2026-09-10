@@ -139,7 +139,7 @@ The replay buffer answers "that was good, keep it". A session recording answers
 
 The replay buffer has to be running first, because a session is recorded from
 the same footage. Press the session hotkey to start and press it again to stop,
-or use the button on the Record tab. Stopping stitches it into one file in
+or use the button on the Record tab. Stopping stitches it into one MP4 in
 `Sessions` — a few seconds for a long night, because there is a lot of it, but
 still no re-encoding.
 
@@ -157,7 +157,8 @@ by accident.
 ## Your library
 
 The Library tab lists everything the app has saved, newest first, filtered by
-clips, sessions or screenshots. Each one can be opened, shared or deleted; clips
+clips, sessions or screenshots. Each card says which it is, because a clip and a
+session recorded a minute apart are the same picture twice. Each one can be opened, shared or deleted; clips
 and sessions can be trimmed, and screenshots edited.
 
 Deleting from here does not go via the Recycle Bin.

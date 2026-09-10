@@ -114,3 +114,69 @@ pub fn managed_dirs(settings: &Settings) -> Vec<PathBuf> {
         settings.sessions_dir(),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::links::Links;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("fivemclip-library-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Sessions are written as MP4 now. The ones recorded before that change
+    /// are still on people's drives, and a library that quietly stopped listing
+    /// them would look exactly like the app had deleted them.
+    #[test]
+    fn sessions_recorded_as_mkv_are_still_listed() {
+        let dir = scratch("mkv");
+        let settings = Settings {
+            output_dir: dir.clone(),
+            ..Default::default()
+        };
+        std::fs::create_dir_all(settings.sessions_dir()).unwrap();
+        std::fs::write(settings.sessions_dir().join("Session_old.mkv"), b"x").unwrap();
+        std::fs::write(settings.sessions_dir().join("Session_new.mp4"), b"x").unwrap();
+
+        let links = Links::load(dir.join("links.json"));
+        let names: Vec<String> = list(&settings, &links)
+            .into_iter()
+            .filter(|i| i.kind == "session")
+            .map(|i| i.name)
+            .collect();
+
+        assert!(names.contains(&"Session_old.mkv".to_string()), "{names:?}");
+        assert!(names.contains(&"Session_new.mp4".to_string()), "{names:?}");
+    }
+
+    /// A clip and a session both being MP4 must not make one show up as the
+    /// other - the folder is what decides, and the UI labels the card from it.
+    #[test]
+    fn kind_comes_from_the_folder_not_the_extension() {
+        let dir = scratch("kind");
+        let settings = Settings {
+            output_dir: dir.clone(),
+            ..Default::default()
+        };
+        std::fs::create_dir_all(settings.clips_dir()).unwrap();
+        std::fs::create_dir_all(settings.sessions_dir()).unwrap();
+        std::fs::write(settings.clips_dir().join("Clip_a.mp4"), b"x").unwrap();
+        std::fs::write(settings.sessions_dir().join("Session_a.mp4"), b"x").unwrap();
+
+        let links = Links::load(dir.join("links.json"));
+        let items = list(&settings, &links);
+        let kind = |name: &str| {
+            items
+                .iter()
+                .find(|i| i.name == name)
+                .map(|i| i.kind)
+                .unwrap_or("missing")
+        };
+        assert_eq!(kind("Clip_a.mp4"), "clip");
+        assert_eq!(kind("Session_a.mp4"), "session");
+    }
+}

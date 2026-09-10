@@ -313,6 +313,12 @@ function renderLibrary() {
       ? `<video class="thumb" src="${src}" preload="metadata" muted playsinline></video>`
       : `<img class="thumb" src="${src}" alt="" loading="lazy" />`;
 
+    // Clips and sessions are both MP4 of the same gameplay, so the thumbnails
+    // of two recordings taken a minute apart are indistinguishable. Without
+    // this the grid reads as duplicates of one file.
+    const KINDS = { clip: "Clip", session: "Session", screenshot: "Screenshot" };
+    const kind = `<span class="kind kind-${item.kind}">${KINDS[item.kind] ?? item.kind}</span>`;
+
     const when = new Date(item.modified_ms).toLocaleString();
     // An already-uploaded screenshot keeps its link instead of offering the
     // upload again - a second upload would just orphan the first one on ImgBB.
@@ -331,7 +337,7 @@ function renderLibrary() {
       : "";
 
     card.innerHTML = `
-      ${thumb}
+      <div class="shot">${thumb}${kind}</div>
       <div class="meta">
         <span class="name">${escapeHtml(item.name)}</span>
         <span class="sub">${when} · ${formatBytes(item.size_bytes)}</span>
