@@ -1,8 +1,9 @@
 # FiveMClip
 
 A local-first clip recorder for FiveM. Keeps the last few minutes of gameplay in
-a rolling buffer, saves it to your own drive when you hit a key, takes
-screenshots, and shares them without an account, a watermark, or a subscription.
+a rolling buffer, saves it to your own drive when you hit a key, records whole
+sessions, takes and edits screenshots, and shares them without an account, a
+watermark, or a subscription.
 
 Built for handing out to a community: one installer, no login, nothing phones
 home.
@@ -13,11 +14,17 @@ FiveMClip checks for a new release when it starts and shows a banner if one
 exists. Nothing downloads until you press the button - a recorder that restarts
 itself mid-session is worse than one running a week behind.
 
+After it updates, the next launch shows a short note on what changed. Skip
+several versions and you get all of them.
+
 Updates are signed. The installed app only accepts an update whose signature
 matches a key baked into it at build time, so compromising the GitHub account
 is not by itself enough to push code to anyone's machine.
 
-The portable build does not self-update; download the new zip.
+The portable build does not self-update and does not show the banner — the
+update artefact is the installer, and running it from a portable copy would
+install a second one elsewhere rather than update the folder you are using.
+Download the new zip instead.
 
 ## Scope
 
@@ -35,8 +42,12 @@ your case.
 
 - **Replay buffer.** Recording runs continuously in the background. Press the
   hotkey and the last N seconds are written out — no re-encoding, so it lands in
-  about a second even for a five minute buffer.
-- **Screenshots** on a separate hotkey, PNG or JPEG.
+  about a second even at the 20 minute maximum.
+- **Session recording** for a whole night, started and stopped on its own
+  hotkey and kept apart from your clips.
+- **Screenshots** on a separate hotkey, full screen or a rectangle you drag.
+- **A screenshot editor** that hides things (black out, pixelate, blur) and
+  marks them up (arrow, box, crop).
 - **Hardware encoding** via NVENC, AMD AMF or Intel Quick Sync, captured with
   DXGI Desktop Duplication. The app tests every combination on first launch and
   keeps whichever actually works on that PC.
@@ -44,6 +55,7 @@ your case.
 - **ImgBB upload** for screenshots, with the link copied to your clipboard and
   kept in the Library so you can copy it again weeks later.
 - **YouTube hand-off** for clips (see below).
+- **Disk guards** so a recorder left running cannot fill your drive.
 - **Tray resident.** Closing the window keeps recording. Optionally only records
   while a game you have named is running, so it is not burning your GPU on the
   desktop.
@@ -52,8 +64,9 @@ Settings has a list of executables that mean "record now", pre-filled with
 FiveM and RedM. Add anything you like, or turn the condition off and have the
 buffer always running.
 
-Everything is written to `%USERPROFILE%\Videos\FiveMClip` by default and stays
-there.
+Everything is written to one folder you pick on first run — it suggests
+`%USERPROFILE%\Videos\FiveMClip` — and stays there. `Clips`, `Sessions` and
+`Screenshots` are subfolders of it. Change it later in Settings.
 
 ## Install
 
@@ -78,8 +91,10 @@ Click **More info**. The dialog expands to show what is being run:
 Then click **Run anyway**.
 
 "Unknown publisher" is expected - it means unsigned, not unsafe. If you would
-rather check before trusting it: every release is scanned on VirusTotal, and
-the source of exactly what you are installing is in this repository.
+rather check before trusting it: every release is built in public by GitHub
+Actions from the tagged source in this repository, so you can read both the code
+and the run that produced the file you downloaded. You can also upload the
+installer to VirusTotal yourself.
 
 ### Portable
 
@@ -103,21 +118,82 @@ and most Windows 10 installs, but not all.
 Portable mode is switched on by the `portable.txt` file in the zip. Delete it
 and that copy behaves like an installed one.
 
-### Default hotkeys
+## Default hotkeys
 
 | Action | Key |
 | --- | --- |
 | Save clip | `F9` |
 | Screenshot | `F10` |
-| Start/stop buffer | `Ctrl+F9` |
+| Screenshot a region | `F11` |
+| Start / stop a session | `F8` |
+| Toggle the buffer | `Ctrl+F9` |
 
-All three are rebindable in Settings.
+All five are rebindable in Settings. If Windows refuses one because another
+program already holds it, you get a notification saying so when you save.
 
-## Editing screenshots
+## Recording a whole session
 
-Screenshots have an **Edit** button in the Library, and region captures can open
-the editor automatically (Settings → Screenshots). Pick a tool and drag on the
-image; `Ctrl`+`Z` undoes, and nothing is written until you save.
+The replay buffer answers "that was good, keep it". A session recording answers
+"record the next three hours" — a whole shift, a training run, a court case.
+
+The replay buffer has to be running first, because a session is recorded from
+the same footage. Press the session hotkey to start and press it again to stop,
+or use the button on the Record tab. Stopping stitches it into one file in
+`Sessions` — a few seconds for a long night, because there is a lot of it, but
+still no re-encoding.
+
+Two things worth knowing:
+
+- **Your clip hotkey still works throughout.** Pulling a highlight out
+  mid-session does not interrupt the recording.
+- **Sessions are never auto-deleted.** The library cap below leaves them alone.
+  They are the largest files the app produces and the ones nobody wants
+  disappearing on them, so removing them is a decision you make yourself.
+
+**Discard** throws the session away without writing it, for when you started one
+by accident.
+
+## Your library
+
+The Library tab lists everything the app has saved, newest first, filtered by
+clips, sessions or screenshots. Each one can be opened, shared or deleted, and
+screenshots can be edited.
+
+Deleting from here does not go via the Recycle Bin.
+
+## Running out of disk
+
+A replay buffer writes continuously and a session writes without limit, so
+"there is plenty of space" is only ever true for a while. Two guards, both in
+Settings → Disk space:
+
+- **A floor.** Recording stops when free space drops below it, and the Record
+  tab warns you well before it gets there. Recording resumes on its own once
+  there is real headroom again — not the instant it creeps back over the line,
+  which would have it stopping and starting every few seconds.
+- **A library cap**, off by default. When on, the oldest clips and screenshots
+  are deleted once the total goes over. Sessions are never touched, and nothing
+  goes to the Recycle Bin. It is off by default because quietly deleting
+  somebody's recordings is not something to opt them into.
+
+## Screenshots
+
+Two ways to take one: the whole screen, or the region hotkey, which dims the
+screen and lets you drag a rectangle. Either can be copied straight to the
+clipboard, uploaded to ImgBB, or both — for a region grab the clipboard copy is
+usually the whole point, and the file is the backup.
+
+JPEG by default, because a JPEG uploads instantly; switch to PNG in Settings if
+you want them pixel-exact.
+
+### Editing them
+
+Screenshots have an **Edit** button in the Library, and a region capture can open
+the editor automatically (Settings → Screenshots) — for anyone routinely hiding
+names or plates, that saves a trip through the library every single time.
+
+Pick a tool and drag on the image; `Ctrl`+`Z` undoes, and nothing is written
+until you save.
 
 ### Hiding things
 

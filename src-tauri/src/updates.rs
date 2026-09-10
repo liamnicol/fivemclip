@@ -15,10 +15,23 @@ pub struct UpdateInfo {
     pub notes: Option<String>,
 }
 
+/// A portable copy must not offer an update.
+///
+/// The update artefact is the NSIS installer. Running it from a portable copy
+/// would install a *second*, separate FiveMClip into the user's profile and
+/// leave the folder they are actually running untouched - so the banner would
+/// reappear on every launch, for ever, having done nothing they asked for.
+fn portable() -> bool {
+    fivemclip_capture::config::is_portable()
+}
+
 /// Is there a newer release? `None` means up to date, or that the check could
 /// not be made - an offline user should see nothing, not an error.
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle) -> Option<UpdateInfo> {
+    if portable() {
+        return None;
+    }
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
@@ -52,6 +65,9 @@ pub async fn check_for_update(app: AppHandle) -> Option<UpdateInfo> {
 /// progress is saved rather than lost.
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    if portable() {
+        return Err("A portable copy updates by downloading the new zip.".into());
+    }
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()

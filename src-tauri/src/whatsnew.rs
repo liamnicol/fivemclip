@@ -25,6 +25,7 @@ pub const RELEASES: &[Release] = &[
             "The screenshot editor can mark things up as well as hide them: Arrow, Box and Crop, alongside the redaction tools.",
             "Arrows and boxes are drawn with a dark outline, so one colour stays readable on a night street and on a blown-out minimap.",
             "Crop is undoable like everything else - it is applied when you save, not when you drag it.",
+            "Portable copies no longer offer an update they cannot apply. Download the new zip instead.",
         ],
     },
     Release {
