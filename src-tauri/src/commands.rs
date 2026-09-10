@@ -599,6 +599,7 @@ pub const EDITOR_WINDOW: &str = "editor";
 /// Open the redaction editor on a screenshot.
 #[tauri::command]
 pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+    crate::diagnostics::log(format!("open_editor: {path}"));
     let path = PathBuf::from(path);
     if !library::is_managed(&state.settings.lock(), &path) {
         return Err("That file is not in the FiveMClip folders.".into());
@@ -618,17 +619,28 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
         return Ok(());
     }
 
-    tauri::WebviewWindowBuilder::new(
-        &app,
-        EDITOR_WINDOW,
-        tauri::WebviewUrl::App("editor.html".into()),
-    )
-    .title("Hide things - FiveMClip")
-    .inner_size(1100.0, 780.0)
-    .min_inner_size(640.0, 480.0)
-    .build()
-    .map_err(|e| format!("could not open the editor: {e}"))?;
-    Ok(())
+    let built = crate::diagnostics::span("building the editor window", || {
+        tauri::WebviewWindowBuilder::new(
+            &app,
+            EDITOR_WINDOW,
+            tauri::WebviewUrl::App("editor.html".into()),
+        )
+        .title("Hide things - FiveMClip")
+        .inner_size(1100.0, 780.0)
+        .min_inner_size(640.0, 480.0)
+        .build()
+    });
+
+    match built {
+        Ok(_) => {
+            crate::diagnostics::log("editor window created");
+            Ok(())
+        }
+        Err(e) => {
+            crate::diagnostics::log(format!("editor window failed: {e}"));
+            Err(format!("could not open the editor: {e}"))
+        }
+    }
 }
 
 /// Which image the editor should be showing.
@@ -638,6 +650,7 @@ pub fn open_editor(app: AppHandle, state: State<AppState>, path: String) -> Resu
 /// never resolves, and the window renders a blank page.
 #[tauri::command]
 pub fn editor_target(state: State<AppState>) -> Option<String> {
+    crate::diagnostics::log("editor_target: the editor page loaded and ran its JS");
     state
         .editor_target
         .lock()
@@ -724,6 +737,16 @@ pub fn reveal_item(app: AppHandle, path: String) -> Result<(), String> {
 pub fn open_item(app: AppHandle, path: String) -> Result<(), String> {
     app.opener()
         .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Open the log file's folder. The log is the first thing to ask for when
+/// something misbehaves, so it should not require knowing where AppData is.
+#[tauri::command]
+pub fn open_log_folder(app: AppHandle) -> Result<(), String> {
+    let path = crate::diagnostics::path().ok_or("Logging is not running.")?;
+    app.opener()
+        .reveal_item_in_dir(path)
         .map_err(|e| e.to_string())
 }
 

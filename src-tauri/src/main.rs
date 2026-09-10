@@ -4,6 +4,7 @@
 
 mod autostart;
 mod commands;
+mod diagnostics;
 mod hotkeys;
 mod library;
 mod state;
@@ -58,13 +59,16 @@ fn main() {
             commands::editor_target,
             commands::save_edited_image,
             commands::open_output_folder,
+            commands::open_log_folder,
             commands::upload_imgbb,
             commands::youtube_handoff,
             commands::open_url,
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
-            let app_state = AppState::load(fivemclip_capture::config::settings_path(&config_dir));
+            let settings_path = fivemclip_capture::config::settings_path(&config_dir);
+            diagnostics::init(&settings_path);
+            let app_state = AppState::load(settings_path);
             let settings = app_state.settings.lock().clone();
             app.manage(app_state);
 
@@ -177,6 +181,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                     .open_path(dir.to_string_lossy().into_owned(), None::<&str>);
             }
             "quit" => {
+                diagnostics::log("tray: quit clicked");
                 // Cleanup happens off the UI thread and against a deadline.
                 // Doing it inline meant a slow ffmpeg shutdown froze the menu
                 // that had just been clicked, leaving the app unkillable

@@ -238,6 +238,11 @@ $("btn-session-discard").addEventListener("click", async () => {
   pollStatus();
 });
 
+$("open-log").addEventListener("click", (event) => {
+  event.preventDefault();
+  call("open_log_folder");
+});
+
 $("btn-folder").addEventListener("click", () => call("open_output_folder"));
 
 $("btn-reprobe").addEventListener("click", async () => {

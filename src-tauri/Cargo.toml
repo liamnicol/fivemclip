@@ -11,7 +11,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 fivemclip-capture = { path = "../crates/capture" }
-tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+# devtools in release too: a user hitting a blank window needs to be able to
+# right-click and read the console, which is the whole diagnosis.
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "devtools"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
