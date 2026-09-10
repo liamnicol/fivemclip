@@ -1,0 +1,8 @@
+This file is what makes FiveMClip run in portable mode.
+
+While it is here, FiveMClip keeps its settings in this folder instead of in
+your Windows user profile, and defaults to saving recordings here too. Delete
+this folder and nothing is left behind.
+
+Delete this file and FiveMClip behaves like an installed copy: settings move to
+your user profile and survive the folder being removed.

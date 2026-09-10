@@ -27,6 +27,7 @@ pub struct Status {
     pub free_bytes: Option<u64>,
     pub space: fivemclip_capture::disk::SpaceVerdict,
     pub paused_for_disk: bool,
+    pub portable: bool,
 }
 
 #[tauri::command]
@@ -109,6 +110,7 @@ pub fn get_status(state: State<AppState>) -> Status {
         paused_for_disk: state
             .paused_for_disk
             .load(std::sync::atomic::Ordering::Relaxed),
+        portable: fivemclip_capture::config::is_portable(),
     }
 }
 

@@ -60,7 +60,7 @@ fn main() {
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
-            let app_state = AppState::load(config_dir.join("settings.json"));
+            let app_state = AppState::load(fivemclip_capture::config::settings_path(&config_dir));
             let settings = app_state.settings.lock().clone();
             app.manage(app_state);
 

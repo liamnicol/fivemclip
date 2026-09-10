@@ -37,6 +37,28 @@ Releases are not code-signed, so Windows SmartScreen will show
 you would rather verify before trusting it, every release is scanned on
 VirusTotal and the source of what you are installing is right here.
 
+### Portable
+
+Every release also ships `FiveMClip-<version>-portable.zip`. Unzip it somewhere
+you have write access and run `FiveMClip.exe` - no installer, no admin, nothing
+written outside the folder.
+
+|  | Installer | Portable |
+| --- | --- | --- |
+| Settings live in | your Windows profile | the program's folder |
+| Recordings default to | `Videos\FiveMClip` | a folder beside the program |
+| Start with Windows | yes | yes, while the folder stays put |
+| WebView2 runtime | installed if missing | must already be present |
+| Uninstall | Add or remove programs | delete the folder |
+
+Portable is the better choice on a shared or locked-down PC, or to try
+FiveMClip without installing anything. The installer is the better choice
+otherwise, mainly because it sorts out WebView2 - which ships with Windows 11
+and most Windows 10 installs, but not all.
+
+Portable mode is switched on by the `portable.txt` file in the zip. Delete it
+and that copy behaves like an installed one.
+
 ### Default hotkeys
 
 | Action | Key |

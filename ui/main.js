@@ -60,6 +60,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
 function renderStatus(status) {
   const dot = $("status-dot");
   const text = $("status-text");
+  $("portable-badge").hidden = !status.portable;
 
   if (!status.ffmpeg_found) {
     dot.className = "dot warn";

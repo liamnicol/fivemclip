@@ -172,7 +172,47 @@ impl Settings {
     }
 }
 
+/// The folder a portable copy lives in, if this is one.
+///
+/// Portability is declared by a marker file shipped in the zip rather than
+/// inferred from where the executable happens to sit. Guessing - "am I under
+/// Program Files?" - gets it wrong for anyone who installs somewhere unusual,
+/// and getting it wrong means writing settings to the wrong place.
+pub fn portable_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    dir.join(PORTABLE_MARKER)
+        .is_file()
+        .then(|| dir.to_path_buf())
+}
+
+pub const PORTABLE_MARKER: &str = "portable.txt";
+
+pub fn is_portable() -> bool {
+    portable_root().is_some()
+}
+
+/// Where settings live: beside the executable when portable, otherwise the
+/// usual per-user config directory.
+///
+/// A portable copy that wrote to %APPDATA% would silently share configuration
+/// with an installed one and leave settings behind when its folder is deleted,
+/// which is the one thing portable software must not do.
+pub fn settings_path(config_dir: &std::path::Path) -> PathBuf {
+    match portable_root() {
+        Some(root) => root.join("settings.json"),
+        None => config_dir.join("settings.json"),
+    }
+}
+
 pub fn default_output_dir() -> PathBuf {
+    // Recordings belong inside the portable folder too, so deleting it really
+    // does leave nothing behind. The setup screen asks on first run, so anyone
+    // who would rather keep clips on a roomier drive can say so.
+    if let Some(root) = portable_root() {
+        return root.join("Recordings");
+    }
+
     let base = dirs_video()
         .or_else(dirs_home)
         .unwrap_or_else(|| PathBuf::from("."));
@@ -310,5 +350,24 @@ mod disk_tests {
     #[test]
     fn pruning_is_off_unless_asked_for() {
         assert!(!Settings::default().auto_prune);
+    }
+}
+
+#[cfg(test)]
+mod portable_tests {
+    use super::*;
+
+    #[test]
+    fn an_ordinary_build_is_not_portable() {
+        // The test binary has no marker beside it, which is the same situation
+        // an installed copy is in.
+        assert!(!is_portable());
+        assert!(portable_root().is_none());
+    }
+
+    #[test]
+    fn settings_fall_back_to_the_config_directory() {
+        let config = PathBuf::from("/tmp/config");
+        assert_eq!(settings_path(&config), config.join("settings.json"));
     }
 }
