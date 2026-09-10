@@ -14,6 +14,10 @@ pub struct AppState {
     /// Set while the user has deliberately switched the buffer off, so the
     /// "only while FiveM is running" watchdog does not turn it back on.
     pub manually_stopped: AtomicBool,
+    /// Set when recording was stopped because the drive ran low, so the
+    /// watchdog knows to wait for real headroom rather than restarting into
+    /// the same wall a few seconds later.
+    pub paused_for_disk: AtomicBool,
 }
 
 impl AppState {
@@ -30,6 +34,7 @@ impl AppState {
             ffmpeg: ffmpeg::find_ffmpeg(),
             settings_path,
             manually_stopped: AtomicBool::new(false),
+            paused_for_disk: AtomicBool::new(false),
         }
     }
 
@@ -106,6 +111,22 @@ impl AppState {
     }
 
     pub fn start_buffer(&self) -> Result<(), String> {
+        // Refuse before starting rather than filling the drive and stopping
+        // partway through someone's session.
+        let settings = self.settings.lock().clone();
+        if let Some(free) = fivemclip_capture::disk::free_for(&settings) {
+            if fivemclip_capture::disk::verdict(free, &settings)
+                == fivemclip_capture::disk::SpaceVerdict::Critical
+            {
+                return Err(format!(
+                    "Only {:.1} GB free where clips are saved, and the limit is {} GB. \
+                     Free some space or lower the limit in Settings.",
+                    free as f64 / 1e9,
+                    settings.min_free_gb
+                ));
+            }
+        }
+
         self.ensure_recorder()?;
         self.manually_stopped.store(false, Ordering::Relaxed);
         let mut guard = self.recorder.lock();

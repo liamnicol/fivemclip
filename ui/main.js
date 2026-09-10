@@ -64,6 +64,9 @@ function renderStatus(status) {
   if (!status.ffmpeg_found) {
     dot.className = "dot warn";
     text.textContent = "ffmpeg missing";
+  } else if (status.paused_for_disk) {
+    dot.className = "dot warn";
+    text.textContent = "Paused — low disk";
   } else if (status.running) {
     dot.className = "dot live";
     text.textContent = "Recording";
@@ -87,6 +90,13 @@ function renderStatus(status) {
   $("btn-toggle").textContent = status.running ? "Stop buffer" : "Start buffer";
   $("pipeline-name").textContent = status.pipeline + (status.has_audio ? "" : " · no audio");
   $("disk-summary").textContent = `${formatBytes(status.library_bytes)} of clips and screenshots`;
+  const freeLabel = $("disk-free");
+  if (status.free_bytes === null || status.free_bytes === undefined) {
+    freeLabel.textContent = "";
+  } else {
+    freeLabel.textContent = `${formatBytes(status.free_bytes)} free on this drive`;
+    freeLabel.classList.toggle("tight", status.space !== "fine");
+  }
 
   $("btn-clip").disabled = !status.running;
 
@@ -96,6 +106,17 @@ function renderStatus(status) {
     messages.push([
       "error",
       "ffmpeg.exe is missing, so nothing can be recorded. Reinstall FiveMClip, or drop ffmpeg.exe into the app's bin folder.",
+    ]);
+  }
+  if (status.paused_for_disk) {
+    messages.push([
+      "warn",
+      "Recording is paused because the drive is low on space. It resumes on its own once there is room, or lower the limit in Settings.",
+    ]);
+  } else if (status.space === "low") {
+    messages.push([
+      "warn",
+      "Running low on disk space. Recording will stop before the drive fills up.",
     ]);
   }
   for (const warning of status.warnings ?? []) messages.push(["warn", warning]);
@@ -308,6 +329,8 @@ function bindRange(id, format) {
 const updateBufferLabel = bindRange("buffer_seconds", formatDuration);
 const updateBitrateLabel = bindRange("bitrate_kbps", (v) => `${(v / 1000).toFixed(0)} Mbps`);
 const updateMicLabel = bindRange("mic_gain_db", (v) => `${v > 0 ? "+" : ""}${v} dB`);
+const updateMinFreeLabel = bindRange("min_free_gb", (v) => `${v} GB`);
+const updateLibraryCapLabel = bindRange("max_library_gb", (v) => `${v} GB`);
 const updateSystemLabel = bindRange("system_gain_db", (v) => `${v > 0 ? "+" : ""}${v} dB`);
 
 function updateEstimate() {
@@ -316,6 +339,10 @@ function updateEstimate() {
   const bytes = ((kbps * 1000 * seconds) / 8) * 1.1;
   $("buffer_estimate").textContent = `Uses about ${formatBytes(bytes)} of disk while running.`;
 }
+
+$("auto_prune").addEventListener("change", () => {
+  $("prune-cap-field").style.display = $("auto_prune").checked ? "" : "none";
+});
 
 $("mic_mode").addEventListener("change", () => {
   $("mic-gain-field").style.display = $("mic_mode").value === "off" ? "none" : "";
@@ -385,6 +412,10 @@ function applySettings(next) {
   $("hotkey_toggle_buffer").value = next.hotkey_toggle_buffer;
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
+  $("min_free_gb").value = next.min_free_gb;
+  $("auto_prune").checked = next.auto_prune;
+  $("max_library_gb").value = next.max_library_gb;
+  $("prune-cap-field").style.display = next.auto_prune ? "" : "none";
   $("only_while_fivem_running").checked = next.only_while_fivem_running;
   $("autostart").checked = next.autostart;
   $("start_minimized").checked = next.start_minimized;
@@ -394,6 +425,8 @@ function applySettings(next) {
   updateBitrateLabel();
   updateMicLabel();
   updateSystemLabel();
+  updateMinFreeLabel();
+  updateLibraryCapLabel();
   updateEstimate();
   $("mic-gain-field").style.display = next.mic_mode === "off" ? "none" : "";
 
@@ -421,6 +454,9 @@ function collectSettings() {
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").value,
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
+    min_free_gb: Number($("min_free_gb").value),
+    auto_prune: $("auto_prune").checked,
+    max_library_gb: Number($("max_library_gb").value),
     only_while_fivem_running: $("only_while_fivem_running").checked,
     autostart: $("autostart").checked,
     start_minimized: $("start_minimized").checked,

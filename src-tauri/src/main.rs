@@ -12,7 +12,7 @@ mod upload;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use fivemclip_capture::sysprobe;
+use fivemclip_capture::{disk, sysprobe};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
@@ -197,6 +197,37 @@ fn spawn_watchdog(app: tauri::AppHandle) {
             .as_mut()
             .map(|r| r.is_running())
             .unwrap_or(false);
+
+        // Disk comes before everything else: there is no point deciding
+        // whether FiveM is up if there is nowhere to write.
+        let free = disk::free_for(&settings);
+        if let Some(free) = free {
+            if disk::verdict(free, &settings) == disk::SpaceVerdict::Critical {
+                if !state.paused_for_disk.swap(true, Ordering::Relaxed) {
+                    if running {
+                        state.stop_buffer(false);
+                    }
+                    commands::notify(
+                        &app,
+                        "Recording stopped - low disk space",
+                        &format!(
+                            "{:.1} GB free, below your {} GB limit. Recording resumes when there is room.",
+                            free as f64 / 1e9,
+                            settings.min_free_gb
+                        ),
+                    );
+                }
+                continue;
+            }
+
+            if state.paused_for_disk.load(Ordering::Relaxed) {
+                if !disk::may_resume(free, &settings) {
+                    continue;
+                }
+                state.paused_for_disk.store(false, Ordering::Relaxed);
+                commands::notify(&app, "Recording resumed", "There is disk space again.");
+            }
+        }
 
         let should_run = if settings.only_while_fivem_running {
             sysprobe::is_fivem_running()

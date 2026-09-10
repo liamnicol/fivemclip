@@ -24,6 +24,9 @@ pub struct Status {
     pub fivem_running: bool,
     pub estimated_buffer_bytes: u64,
     pub library_bytes: u64,
+    pub free_bytes: Option<u64>,
+    pub space: fivemclip_capture::disk::SpaceVerdict,
+    pub paused_for_disk: bool,
 }
 
 #[tauri::command]
@@ -89,12 +92,20 @@ pub fn get_status(state: State<AppState>) -> Status {
             warnings: Vec::new(),
         },
     };
+    let free = fivemclip_capture::disk::free_for(&settings);
     Status {
         recorder,
         ffmpeg_found: state.ffmpeg.is_some(),
         fivem_running: sysprobe::is_fivem_running(),
         estimated_buffer_bytes: settings.estimated_buffer_bytes(),
         library_bytes: library::total_size(&settings),
+        space: free
+            .map(|f| fivemclip_capture::disk::verdict(f, &settings))
+            .unwrap_or(fivemclip_capture::disk::SpaceVerdict::Fine),
+        free_bytes: free,
+        paused_for_disk: state
+            .paused_for_disk
+            .load(std::sync::atomic::Ordering::Relaxed),
     }
 }
 
@@ -169,6 +180,19 @@ pub fn save_clip(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     notify(&app, "Clip saved", &name);
+
+    let pruned = fivemclip_capture::disk::prune(&state.settings.lock().clone());
+    if pruned.deleted > 0 {
+        notify(
+            &app,
+            "Old clips removed",
+            &format!(
+                "{} file(s), {:.1} GB, to stay under your library limit.",
+                pruned.deleted,
+                pruned.freed_bytes as f64 / 1e9
+            ),
+        );
+    }
     Ok(path.to_string_lossy().into_owned())
 }
 

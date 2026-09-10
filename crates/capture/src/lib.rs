@@ -13,3 +13,5 @@ pub mod sysprobe;
 pub use config::{MicMode, Settings};
 pub use ffmpeg::{Pipeline, ProbeReport};
 pub use ring::{Recorder, RecorderStatus};
+
+pub mod disk;

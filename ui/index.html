@@ -65,6 +65,7 @@
           <div class="card">
             <h3>On disk</h3>
             <p class="muted" id="disk-summary">—</p>
+            <p class="muted" id="disk-free">—</p>
             <button class="btn btn-ghost" id="btn-folder">Open folder</button>
           </div>
         </div>
@@ -204,6 +205,36 @@
             <label class="checkbox">
               <input type="checkbox" id="imgbb_auto_upload" />
               <span>Upload every screenshot automatically and copy the link</span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Disk space</legend>
+            <label class="field">
+              <span>Stop recording when free space drops below</span>
+              <span class="row">
+                <input type="range" id="min_free_gb" min="2" max="200" step="1" />
+                <output id="min_free_out"></output>
+              </span>
+              <small class="muted">
+                A replay buffer writes constantly. Without a floor it will fill
+                the drive.
+              </small>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="auto_prune" />
+              <span>Delete my oldest clips when the library gets too big</span>
+            </label>
+            <label class="field" id="prune-cap-field">
+              <span>Keep at most</span>
+              <span class="row">
+                <input type="range" id="max_library_gb" min="1" max="500" step="1" />
+                <output id="max_library_out"></output>
+              </span>
+              <small class="muted">
+                Oldest first, and only clips and screenshots you have saved.
+                Deleted files do not go to the Recycle Bin.
+              </small>
             </label>
           </fieldset>
 

@@ -43,6 +43,18 @@ pub struct Settings {
 
     /// Only hold the replay buffer open while FiveM is actually running, so we
     /// are not burning GPU and disk on someone's desktop all day.
+    /// Stop recording when the drive drops below this many gigabytes free.
+    ///
+    /// A replay buffer writes continuously and a session recording writes
+    /// without bound, so without a floor the app will happily fill someone's
+    /// system drive and take Windows down with it.
+    pub min_free_gb: u32,
+    /// Delete the oldest clips once the library exceeds `max_library_gb`.
+    /// Off by default: silently removing someone's recordings is not something
+    /// to opt people into.
+    pub auto_prune: bool,
+    pub max_library_gb: u32,
+
     pub only_while_fivem_running: bool,
     pub start_minimized: bool,
     pub autostart: bool,
@@ -84,6 +96,9 @@ impl Default for Settings {
             mic_mode: MicMode::Mixed,
             mic_gain_db: 0.0,
             system_gain_db: 0.0,
+            min_free_gb: 10,
+            auto_prune: false,
+            max_library_gb: 50,
             only_while_fivem_running: true,
             start_minimized: false,
             autostart: false,
@@ -117,6 +132,14 @@ impl Settings {
 
     /// Rough worst-case disk footprint of the ring buffer, in bytes. Shown in
     /// the UI so nobody sets a 30 minute buffer at 60 Mbit and fills their SSD.
+    pub fn min_free_bytes(&self) -> u64 {
+        self.min_free_gb as u64 * 1_000_000_000
+    }
+
+    pub fn max_library_bytes(&self) -> u64 {
+        self.max_library_gb as u64 * 1_000_000_000
+    }
+
     pub fn estimated_buffer_bytes(&self) -> u64 {
         // Audio is a rounding error next to the video bitrate.
         let bits = self.bitrate_kbps as u64 * 1000 * self.buffer_seconds as u64;
@@ -129,6 +152,10 @@ impl Settings {
         self.bitrate_kbps = self.bitrate_kbps.clamp(2_000, 150_000);
         self.mic_gain_db = self.mic_gain_db.clamp(-30.0, 30.0);
         self.screenshot_quality = self.screenshot_quality.clamp(2, 31);
+        // A floor below a couple of gigabytes is not a floor: Windows itself
+        // starts misbehaving long before a disk is genuinely full.
+        self.min_free_gb = self.min_free_gb.clamp(2, 500);
+        self.max_library_gb = self.max_library_gb.clamp(1, 10_000);
         self.system_gain_db = self.system_gain_db.clamp(-30.0, 30.0);
         if self.output_dir.as_os_str().is_empty() {
             self.output_dir = default_output_dir();
@@ -234,5 +261,45 @@ mod tests {
         let restored: Settings = serde_json::from_str(r#"{"fps": 30}"#).unwrap();
         assert_eq!(restored.fps, 30);
         assert_eq!(restored.buffer_seconds, Settings::default().buffer_seconds);
+    }
+}
+
+#[cfg(test)]
+mod disk_tests {
+    use super::*;
+
+    #[test]
+    fn free_space_floor_stays_sane() {
+        let mut s = Settings {
+            min_free_gb: 0,
+            ..Default::default()
+        };
+        s.clamp();
+        // Zero would let the buffer run a drive to genuinely full, which takes
+        // Windows down with it.
+        assert!(s.min_free_gb >= 2);
+
+        let mut s = Settings {
+            min_free_gb: 99_999,
+            ..Default::default()
+        };
+        s.clamp();
+        assert!(s.min_free_gb <= 500);
+    }
+
+    #[test]
+    fn thresholds_convert_to_bytes() {
+        let s = Settings {
+            min_free_gb: 10,
+            max_library_gb: 50,
+            ..Default::default()
+        };
+        assert_eq!(s.min_free_bytes(), 10_000_000_000);
+        assert_eq!(s.max_library_bytes(), 50_000_000_000);
+    }
+
+    #[test]
+    fn pruning_is_off_unless_asked_for() {
+        assert!(!Settings::default().auto_prune);
     }
 }
