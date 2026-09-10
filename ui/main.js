@@ -61,6 +61,7 @@ function renderStatus(status) {
   const dot = $("status-dot");
   const text = $("status-text");
   $("portable-badge").hidden = !status.portable;
+  $("app-version").textContent = status.version ?? "—";
 
   if (!status.ffmpeg_found) {
     dot.className = "dot warn";

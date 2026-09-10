@@ -367,3 +367,6 @@ kbd {
   padding: 3px 7px; border-radius: 999px;
 }
 .chip-item button:hover { background: var(--accent); color: #fff; }
+
+/* Quietly present, so a bug report can name its build without hunting. */
+.version-note { font-size: 12px; margin: 0 0 16px; }

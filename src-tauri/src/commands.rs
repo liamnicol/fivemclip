@@ -28,6 +28,9 @@ pub struct Status {
     pub space: fivemclip_capture::disk::SpaceVerdict,
     pub paused_for_disk: bool,
     pub portable: bool,
+    /// So a bug report can say which build it came from without the reporter
+    /// having to go looking.
+    pub version: &'static str,
 }
 
 #[tauri::command]
@@ -126,6 +129,7 @@ pub fn get_status(state: State<AppState>) -> Status {
             .paused_for_disk
             .load(std::sync::atomic::Ordering::Relaxed),
         portable: fivemclip_capture::config::is_portable(),
+        version: env!("CARGO_PKG_VERSION"),
     }
 }
 

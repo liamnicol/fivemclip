@@ -48,6 +48,19 @@ jobs:
 
       # Cheapest check first - it compiles nothing, so a stray tab fails in
       # seconds rather than after a full dependency build.
+      # A mismatch here means the installer reports one version and the binary
+      # another, which only ever surfaces when someone is already confused
+      # about which build they have.
+      - name: Check the version is consistent
+        shell: pwsh
+        run: |
+          $tauri = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ($tauri -ne $cargo) {
+            throw "tauri.conf.json says $tauri but Cargo.toml says $cargo."
+          }
+          Write-Host "Version: $tauri"
+
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -125,12 +138,31 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/bundle/nsis/*.exe dist/
+
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+
+          # Every dev build carrying the same product version means downloads
+          # collide in the browser and nobody can say which one they are
+          # running when they report a bug. Tagged builds are named for the
+          # tag; everything else gets the run number and commit, which are the
+          # two things needed to find the exact build again.
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+              $tag = $env:GITHUB_REF -replace '^refs/tags/v', ''
+              if ($tag -ne $version) {
+                  throw "Tag v$tag does not match the version in tauri.conf.json ($version). Bump the version before tagging."
+              }
+              $label = $version
+          } else {
+              $label = "$version-dev.$($env:GITHUB_RUN_NUMBER).$($env:GITHUB_SHA.Substring(0,7))"
+          }
+          Write-Host "Build label: $label"
+
+          $installer = Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          Copy-Item $installer.FullName "dist/FiveMClip-$label-setup.exe"
 
           # Portable build: the same binary, plus the pieces the installer
           # would otherwise have provided. The marker file is what puts the app
           # into portable mode - see crates/capture/src/config.rs.
-          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           $staging = "staging/FiveMClip"
           New-Item -ItemType Directory -Force -Path "$staging/bin" | Out-Null
           Copy-Item target/release/FiveMClip.exe "$staging/"
@@ -145,7 +177,7 @@ jobs:
           # The folder, not its contents: zipping "$staging/*" produces an
           # archive with no wrapper, so "extract here" scatters the marker file
           # and turns whatever folder they extracted into the portable root.
-          Compress-Archive -Path $staging -DestinationPath "dist/FiveMClip-$version-portable.zip" -Force
+          Compress-Archive -Path $staging -DestinationPath "dist/FiveMClip-$label-portable.zip" -Force
           Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4
