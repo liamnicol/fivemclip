@@ -127,6 +127,10 @@ impl AppState {
             }
         }
 
+        // Starting by hand also clears a low-disk pause. The pre-flight above
+        // has just confirmed there is room, so leaving the flag set would have
+        // the watchdog skip every tick and the UI insist it is still paused.
+        self.paused_for_disk.store(false, Ordering::Relaxed);
         self.ensure_recorder()?;
         self.manually_stopped.store(false, Ordering::Relaxed);
         let mut guard = self.recorder.lock();

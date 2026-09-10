@@ -104,7 +104,11 @@ function renderStatus(status) {
   const sessionButton = $("btn-session");
   sessionButton.textContent = status.session_active ? "Stop and save" : "Start session";
   sessionButton.classList.toggle("btn-primary", status.session_active);
-  sessionButton.disabled = !status.running;
+  // Stopping stays available whatever the buffer is doing: if recording
+  // halted for low disk or ffmpeg died, the session is still on disk and
+  // saving it is the one thing the user needs to be able to do.
+  sessionButton.disabled = status.session_active ? false : !status.running;
+  $("btn-session-discard").hidden = !status.session_active;
   $("session-summary").textContent = status.session_active
     ? `Recording ${formatDuration(status.session_seconds)} · ${formatBytes(status.session_bytes)}`
     : "Not recording a session.";
@@ -213,6 +217,19 @@ $("btn-session").addEventListener("click", async () => {
     button.disabled = false;
     pollStatus();
   }
+});
+
+$("btn-session-discard").addEventListener("click", async () => {
+  // Deliberately blunt wording: this throws away everything since the session
+  // started, which may be hours.
+  const ok = await dialog.confirm(
+    "Throw away this session recording? Everything since you started it is lost.",
+    { title: "Discard session", kind: "warning" },
+  );
+  if (!ok) return;
+  await call("discard_session");
+  toast("Session discarded");
+  pollStatus();
 });
 
 $("btn-folder").addEventListener("click", () => call("open_output_folder"));

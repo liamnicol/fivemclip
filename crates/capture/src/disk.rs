@@ -77,11 +77,12 @@ pub fn prune(settings: &Settings) -> PruneReport {
     }
 
     let mut files: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
-    for dir in [
-        settings.clips_dir(),
-        settings.screenshots_dir(),
-        settings.sessions_dir(),
-    ] {
+    // Sessions are deliberately excluded. They are hours long and recorded on
+    // purpose, the settings text promises only clips and screenshots, and
+    // silently deleting a multi-gigabyte recording someone chose to make is
+    // not a thing to do on their behalf. The free-space floor still protects
+    // the drive.
+    for dir in [settings.clips_dir(), settings.screenshots_dir()] {
         collect(&dir, &mut files);
     }
 
@@ -191,6 +192,51 @@ mod tests {
         assert!(!s.clips_dir().join("b.mp4").exists());
         assert!(s.clips_dir().join("c.mp4").exists());
         assert!(s.clips_dir().join("d.mp4").exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod session_safety_tests {
+    use super::*;
+
+    #[test]
+    fn pruning_never_touches_session_recordings() {
+        let root = std::env::temp_dir().join(format!("fivemclip-sessions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        let s = Settings {
+            output_dir: root.clone(),
+            auto_prune: true,
+            max_library_gb: 1,
+            ..Default::default()
+        };
+        std::fs::create_dir_all(s.clips_dir()).unwrap();
+        std::fs::create_dir_all(s.sessions_dir()).unwrap();
+
+        // The session is both the oldest and the largest, so an
+        // oldest-first prune would take it first if it were eligible.
+        let session = s.sessions_dir().join("Session_old.mkv");
+        std::fs::File::create(&session)
+            .unwrap()
+            .set_len(3_000_000_000)
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
+        for name in ["a.mp4", "b.mp4"] {
+            std::fs::File::create(s.clips_dir().join(name))
+                .unwrap()
+                .set_len(900_000_000)
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+
+        prune(&s);
+        assert!(
+            session.exists(),
+            "a session recording must survive pruning even when it is the oldest and largest thing there"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

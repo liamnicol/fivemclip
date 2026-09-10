@@ -41,20 +41,21 @@ pub struct Settings {
     /// Gain applied to system audio before mixing, in dB.
     pub system_gain_db: f32,
 
-    /// Only hold the replay buffer open while FiveM is actually running, so we
-    /// are not burning GPU and disk on someone's desktop all day.
     /// Stop recording when the drive drops below this many gigabytes free.
     ///
     /// A replay buffer writes continuously and a session recording writes
     /// without bound, so without a floor the app will happily fill someone's
     /// system drive and take Windows down with it.
     pub min_free_gb: u32,
-    /// Delete the oldest clips once the library exceeds `max_library_gb`.
+    /// Delete the oldest clips and screenshots once they exceed
+    /// `max_library_gb`. Never touches session recordings.
     /// Off by default: silently removing someone's recordings is not something
     /// to opt people into.
     pub auto_prune: bool,
     pub max_library_gb: u32,
 
+    /// Only hold the replay buffer open while FiveM is actually running, so we
+    /// are not burning GPU and disk on someone's desktop all day.
     pub only_while_fivem_running: bool,
     pub start_minimized: bool,
     pub autostart: bool,

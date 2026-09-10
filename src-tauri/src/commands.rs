@@ -44,6 +44,21 @@ pub fn save_settings(
     settings.clamp();
 
     let previous = state.settings.lock().clone();
+
+    // A session's footage lives in the ring folder under the output directory.
+    // Moving it mid-session points the recorder at an empty ring, and the save
+    // then reports the session as too short and loses the lot.
+    if previous.output_dir != settings.output_dir {
+        let recording = state
+            .recorder
+            .lock()
+            .as_ref()
+            .map(|r| r.session_active())
+            .unwrap_or(false);
+        if recording {
+            return Err("Stop the session recording before changing where clips are saved.".into());
+        }
+    }
     // The cached encoder choice is only valid for the monitor it was probed
     // against, since a different output can be on a different GPU entirely.
     if previous.monitor_index != settings.monitor_index {

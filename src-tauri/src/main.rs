@@ -210,11 +210,26 @@ fn spawn_watchdog(app: tauri::AppHandle) {
                     if running {
                         state.stop_buffer(false);
                     }
+                    // A session's footage lives in the ring, which nothing
+                    // prunes, so the pause cannot lift on its own while one is
+                    // running. Saying "resumes when there is room" would be a
+                    // lie the user waits on.
+                    let session_active = state
+                        .recorder
+                        .lock()
+                        .as_ref()
+                        .map(|r| r.session_active())
+                        .unwrap_or(false);
+                    let advice = if session_active {
+                        "Your session so far is safe. Save or discard it, or free up space, to carry on."
+                    } else {
+                        "Recording resumes on its own once there is room."
+                    };
                     commands::notify(
                         &app,
                         "Recording stopped - low disk space",
                         &format!(
-                            "{:.1} GB free, below your {} GB limit. Recording resumes when there is room.",
+                            "{:.1} GB free, below your {} GB limit. {advice}",
                             free as f64 / 1e9,
                             settings.min_free_gb
                         ),

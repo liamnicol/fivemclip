@@ -136,10 +136,16 @@ jobs:
           Copy-Item target/release/FiveMClip.exe "$staging/"
           Copy-Item src-tauri/bin/ffmpeg.exe "$staging/bin/"
           Copy-Item LICENSE, THIRD-PARTY.md "$staging/"
-          Copy-Item tools/portable/PORTABLE.txt "$staging/"
+          # Names must differ by more than case: NTFS treats PORTABLE.txt and
+          # portable.txt as the same file, so the two copies would collapse
+          # into one and the zip would ship without its marker.
+          Copy-Item tools/portable/README-PORTABLE.txt "$staging/"
           Copy-Item tools/portable/portable.txt "$staging/"
 
-          Compress-Archive -Path "$staging/*" -DestinationPath "dist/FiveMClip-$version-portable.zip" -Force
+          # The folder, not its contents: zipping "$staging/*" produces an
+          # archive with no wrapper, so "extract here" scatters the marker file
+          # and turns whatever folder they extracted into the portable root.
+          Compress-Archive -Path $staging -DestinationPath "dist/FiveMClip-$version-portable.zip" -Force
           Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4

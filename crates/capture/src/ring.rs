@@ -15,7 +15,7 @@ use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::audio::{self, Mixer};
 use crate::config::{MicMode, Settings};
@@ -48,6 +48,13 @@ struct Session {
     /// an Instant.
     started_at: std::time::SystemTime,
     label: String,
+    /// Size on disk, refreshed occasionally rather than on every status poll.
+    ///
+    /// Status is polled about once a second and the ring grows without bound
+    /// during a session, so measuring it each time means thousands of stat
+    /// calls a second after a couple of hours - while holding the recorder lock.
+    cached_bytes: u64,
+    measured_at: Option<Instant>,
 }
 
 struct Running {
@@ -106,17 +113,13 @@ impl Recorder {
             ),
             None => (0, Vec::new(), false),
         };
-        let (session_seconds, session_bytes) = match &self.session {
-            Some(session) => (
-                session
-                    .started_at
-                    .elapsed()
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0),
-                self.session_bytes_on_disk(),
-            ),
-            None => (0, 0),
-        };
+        let session_seconds = self
+            .session
+            .as_ref()
+            .and_then(|s| s.started_at.elapsed().ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let session_bytes = self.session_bytes_on_disk();
 
         RecorderStatus {
             running,
@@ -134,15 +137,29 @@ impl Recorder {
         self.session.is_some()
     }
 
-    fn session_bytes_on_disk(&self) -> u64 {
-        let Some(session) = &self.session else {
+    /// Size of the running session, remeasured at most every few seconds.
+    fn session_bytes_on_disk(&mut self) -> u64 {
+        const REMEASURE_AFTER: Duration = Duration::from_secs(5);
+
+        let ring = self.settings.ring_dir();
+        let Some(session) = self.session.as_mut() else {
             return 0;
         };
-        segments_since(&self.settings.ring_dir(), session.started_at)
+        if session
+            .measured_at
+            .map(|at| at.elapsed() < REMEASURE_AFTER)
+            .unwrap_or(false)
+        {
+            return session.cached_bytes;
+        }
+
+        session.cached_bytes = segments_since(&ring, session.started_at)
             .into_iter()
-            .filter_map(|(path, _)| std::fs::metadata(path).ok())
+            .filter_map(|(path, _)| fs::metadata(path).ok())
             .map(|m| m.len())
-            .sum()
+            .sum();
+        session.measured_at = Some(Instant::now());
+        session.cached_bytes
     }
 
     pub fn apply_settings(&mut self, settings: Settings, pipeline: &'static Pipeline) {
@@ -357,6 +374,8 @@ impl Recorder {
         self.session = Some(Session {
             started_at: std::time::SystemTime::now(),
             label: chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string(),
+            cached_bytes: 0,
+            measured_at: None,
         });
 
         self.stop();
@@ -376,8 +395,10 @@ impl Recorder {
     pub fn stop_session(&mut self) -> Result<PathBuf, String> {
         let session = self.session.take().ok_or("No session is being recorded.")?;
 
-        // Stopping flushes the segment in progress, so the last few seconds
-        // are not lost.
+        // Killing ffmpeg truncates whatever segment is mid-write, so up to
+        // SEGMENT_SECONDS of the tail is lost. Shutting it down gracefully
+        // would need a control channel we do not have, since stdin already
+        // carries the audio.
         let was_running = self.is_running();
         self.stop();
 
@@ -394,13 +415,31 @@ impl Recorder {
         fs::create_dir_all(&dir).map_err(|e| format!("could not create sessions folder: {e}"))?;
         let out = dir.join(format!("Session_{}.mkv", session.label));
 
-        let result = concat_segments(&self.ffmpeg, &ring, &segments, &out);
-
-        // Whatever happened, get back to recording before reporting it.
-        if was_running {
-            let _ = self.start();
+        match concat_segments(&self.ffmpeg, &ring, &segments, &out) {
+            Ok(()) => {
+                if was_running {
+                    let _ = self.start();
+                }
+                Ok(out)
+            }
+            Err(e) => {
+                // Put the session back before restarting. Without this the
+                // restart runs with no session active, which clears the ring -
+                // and the ring is where the whole recording lives. A failed
+                // save would delete hours of footage, and the likeliest reason
+                // to fail is not enough room for the output, which is exactly
+                // when the source needs to survive.
+                let _ = fs::remove_file(&out);
+                self.session = Some(session);
+                if was_running {
+                    let _ = self.start();
+                }
+                Err(format!(
+                    "Could not save the session: {e}. The recording is still on disk - \
+                     free up some space and try again."
+                ))
+            }
         }
-        result.map(|()| out)
     }
 
     /// Abandon the session without writing it out.
@@ -454,8 +493,14 @@ fn clear_ring(ring: &Path) {
     if let Ok(entries) = fs::read_dir(ring) {
         for e in entries.flatten() {
             let p = e.path();
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            // Concat lists are named after their output now, so matching the
+            // old literal "concat.txt" left one behind per interrupted save.
             if p.extension().map(|x| x == "ts").unwrap_or(false)
-                || p.file_name().map(|n| n == "concat.txt").unwrap_or(false)
+                || (name.starts_with("concat") && name.ends_with(".txt"))
             {
                 let _ = fs::remove_file(p);
             }
@@ -762,6 +807,26 @@ mod tests {
             .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, ["seg00002.ts", "seg00003.ts"], "{names:?}");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn clearing_the_ring_removes_concat_lists_whatever_they_are_called() {
+        let dir = scratch("stale-lists");
+        seed(&dir, &[("seg00000.ts", 10)]);
+        // Named after their output since clips and sessions started sharing
+        // the concat path; the old code matched only "concat.txt" and leaked
+        // one file per interrupted save.
+        fs::write(dir.join("concat-Clip_2026-01-01_00-00-00.txt"), b"x").unwrap();
+        fs::write(dir.join("concat.txt"), b"x").unwrap();
+        fs::write(dir.join("keep-me.mp4"), b"a saved clip").unwrap();
+
+        clear_ring(&dir);
+
+        assert!(!dir.join("concat-Clip_2026-01-01_00-00-00.txt").exists());
+        assert!(!dir.join("concat.txt").exists());
+        assert!(dir.join("keep-me.mp4").exists());
 
         fs::remove_dir_all(&dir).unwrap();
     }
