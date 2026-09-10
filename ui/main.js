@@ -73,7 +73,12 @@ function renderStatus(status) {
     text.textContent = "Recording";
   } else if (!status.fivem_running && settings?.only_while_fivem_running) {
     dot.className = "dot idle";
-    text.textContent = "Waiting for FiveM";
+    const watched = settings.trigger_processes ?? [];
+    // Name the app when there is one worth naming; a list of six is noise.
+    text.textContent =
+      watched.length === 1
+        ? `Waiting for ${watched[0].replace(/\.exe$/i, "")}`
+        : "Waiting for a game";
   } else {
     dot.className = "dot idle";
     text.textContent = "Buffer off";
@@ -470,6 +475,8 @@ function applySettings(next) {
   $("max_library_gb").value = next.max_library_gb;
   $("prune-cap-field").style.display = next.auto_prune ? "" : "none";
   $("only_while_fivem_running").checked = next.only_while_fivem_running;
+  triggers = [...(next.trigger_processes ?? [])];
+  renderTriggers();
   $("autostart").checked = next.autostart;
   $("start_minimized").checked = next.start_minimized;
   $("output_dir").value = next.output_dir;
@@ -487,6 +494,55 @@ function applySettings(next) {
   $("hint-shot").textContent = next.hotkey_screenshot || "no hotkey";
   $("hint-region").textContent = next.hotkey_region || "no hotkey";
 }
+
+/* ---------------- trigger apps ---------------- */
+
+let triggers = [];
+
+function renderTriggers() {
+  const list = $("trigger-list");
+  list.innerHTML = "";
+  for (const name of triggers) {
+    const chip = document.createElement("span");
+    chip.className = "chip-item";
+    chip.innerHTML = `${escapeHtml(name)} <button type="button" aria-label="Remove ${escapeHtml(name)}">&times;</button>`;
+    chip.querySelector("button").addEventListener("click", () => {
+      triggers = triggers.filter((t) => t !== name);
+      renderTriggers();
+    });
+    list.append(chip);
+  }
+  $("triggers-field").style.display = $("only_while_fivem_running").checked ? "" : "none";
+}
+
+function addTrigger() {
+  const input = $("trigger-input");
+  const name = input.value.trim();
+  // Case-insensitive, since Windows executable names are.
+  if (name && !triggers.some((t) => t.toLowerCase() === name.toLowerCase())) {
+    triggers.push(name);
+    renderTriggers();
+  }
+  input.value = "";
+  input.focus();
+}
+
+$("trigger-add").addEventListener("click", addTrigger);
+$("trigger-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    // Otherwise Enter submits the settings form instead of adding the app.
+    event.preventDefault();
+    addTrigger();
+  }
+});
+$("only_while_fivem_running").addEventListener("change", renderTriggers);
+
+$("trigger-input").addEventListener("focus", async () => {
+  const list = $("running-processes");
+  if (list.childElementCount > 0) return;
+  const running = await invoke("running_processes").catch(() => []);
+  for (const name of running) list.append(new Option(name));
+});
 
 function collectSettings() {
   return {
@@ -513,6 +569,7 @@ function collectSettings() {
     auto_prune: $("auto_prune").checked,
     max_library_gb: Number($("max_library_gb").value),
     only_while_fivem_running: $("only_while_fivem_running").checked,
+    trigger_processes: triggers,
     autostart: $("autostart").checked,
     start_minimized: $("start_minimized").checked,
     output_dir: $("output_dir").value,

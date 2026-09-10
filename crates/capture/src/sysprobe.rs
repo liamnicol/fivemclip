@@ -139,29 +139,47 @@ pub fn free_space_bytes(path: &std::path::Path) -> Option<u64> {
         .map(|d| d.available_space())
 }
 
-/// Does this process name belong to the game?
+/// Does this process name match one of the executables the user is watching?
+///
+/// Entries are matched on the executable stem, case-insensitively, with or
+/// without `.exe`. FiveM and RedM get a little extra help: the launcher is
+/// `FiveM.exe` but the game itself carries its build number, as in
+/// `FiveM_b2802_GTAProcess.exe`, and nobody should have to know that.
 ///
 /// Split out from the process scan so it can be tested, because the obvious
-/// version of this was wrong in a way that was invisible from the outside:
-/// matching a bare "fivem" prefix also matches `FiveMClip.exe`. The app
-/// detected itself, concluded the game was permanently running, and
-/// "only record while FiveM is running" silently never turned anything off.
-pub fn is_game_process(raw_name: &str) -> bool {
+/// version of this was wrong invisibly: matching a bare "fivem" prefix also
+/// matched `FiveMClip.exe`, so the app detected itself, concluded the game was
+/// permanently running, and never turned anything off.
+pub fn matches_trigger(raw_name: &str, triggers: &[String]) -> bool {
     let name = raw_name.to_ascii_lowercase();
     let stem = name.strip_suffix(".exe").unwrap_or(name.as_str());
+    if stem.is_empty() {
+        return false;
+    }
 
-    // The launcher is `FiveM.exe`; the game itself carries its build number,
-    // as in `FiveM_b2802_GTAProcess.exe` or `RedM_b1491_RDR3Process.exe`.
-    matches!(stem, "fivem" | "redm")
-        || stem.ends_with("gtaprocess")
-        || stem.ends_with("rdr3process")
+    triggers.iter().any(|trigger| {
+        let trigger = trigger.trim().to_ascii_lowercase();
+        let trigger = trigger.strip_suffix(".exe").unwrap_or(trigger.as_str());
+        if trigger.is_empty() {
+            return false;
+        }
+        if stem == trigger {
+            return true;
+        }
+        match trigger {
+            "fivem" => stem.ends_with("gtaprocess"),
+            "redm" => stem.ends_with("rdr3process"),
+            _ => false,
+        }
+    })
 }
 
-pub fn is_fivem_running() -> bool {
+/// Is anything the user is watching for currently running?
+pub fn is_trigger_running(triggers: &[String]) -> bool {
     use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
-    // Belt and braces alongside the name check: whatever this executable ends
-    // up being called, it must never count as the game.
+    // Belt and braces: whatever this executable ends up being called, it must
+    // never count as the thing it is watching for.
     let own_pid = Pid::from_u32(std::process::id());
 
     let sys = System::new_with_specifics(
@@ -169,50 +187,100 @@ pub fn is_fivem_running() -> bool {
     );
     sys.processes()
         .iter()
-        .any(|(pid, p)| *pid != own_pid && is_game_process(&p.name().to_string_lossy()))
+        .any(|(pid, p)| *pid != own_pid && matches_trigger(&p.name().to_string_lossy(), triggers))
+}
+
+/// Running executables, heaviest first.
+///
+/// Ordering by memory is a cheap proxy for "things the user would recognise":
+/// games and browsers sort above the hundred background services nobody wants
+/// to scroll past when picking what to record.
+pub fn running_processes(limit: usize) -> Vec<String> {
+    use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+
+    let sys = System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+    );
+
+    let mut seen: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for process in sys.processes().values() {
+        let name = process.name().to_string_lossy().into_owned();
+        if name.is_empty() {
+            continue;
+        }
+        // Several processes often share a name; the biggest is the interesting one.
+        let entry = seen.entry(name).or_insert(0);
+        *entry = (*entry).max(process.memory());
+    }
+
+    let mut names: Vec<(String, u64)> = seen.into_iter().collect();
+    names.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    names.into_iter().take(limit).map(|(n, _)| n).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn fivem() -> Vec<String> {
+        vec!["FiveM".to_string(), "RedM".to_string()]
+    }
+
     #[test]
     fn recognises_the_launcher_and_the_game() {
-        assert!(is_game_process("FiveM.exe"));
-        assert!(is_game_process("FiveM_b2802_GTAProcess.exe"));
-        assert!(is_game_process("FiveM_b3095_GTAProcess.exe"));
-        assert!(is_game_process("RedM.exe"));
-        assert!(is_game_process("RedM_b1491_RDR3Process.exe"));
-    }
-
-    #[test]
-    fn is_not_fooled_by_our_own_executable() {
-        // The whole bug: FiveMClip.exe starts with "fivem".
-        assert!(!is_game_process("FiveMClip.exe"));
-        assert!(!is_game_process("fivemclip.exe"));
-        assert!(!is_game_process("FiveMClip"));
-    }
-
-    #[test]
-    fn ignores_unrelated_processes() {
         for name in [
-            "chrome.exe",
-            "Discord.exe",
-            "explorer.exe",
-            "FiveMClipHelper.exe",
-            "fivem-something-else.exe",
-            "",
+            "FiveM.exe",
+            "FiveM_b2802_GTAProcess.exe",
+            "FiveM_b3095_GTAProcess.exe",
+            "RedM.exe",
+            "RedM_b1491_RDR3Process.exe",
         ] {
-            assert!(
-                !is_game_process(name),
-                "{name} should not count as the game"
-            );
+            assert!(matches_trigger(name, &fivem()), "{name} should match");
         }
     }
 
     #[test]
-    fn matching_ignores_case() {
-        assert!(is_game_process("FIVEM.EXE"));
-        assert!(is_game_process("fivem_b2802_gtaprocess.exe"));
+    fn is_not_fooled_by_our_own_executable() {
+        // The original bug: FiveMClip.exe starts with "fivem".
+        assert!(!matches_trigger("FiveMClip.exe", &fivem()));
+        assert!(!matches_trigger("fivemclip.exe", &fivem()));
+        assert!(!matches_trigger("FiveMClip", &fivem()));
+    }
+
+    #[test]
+    fn ignores_unrelated_processes() {
+        for name in ["chrome.exe", "Discord.exe", "fivem-something.exe", ""] {
+            assert!(!matches_trigger(name, &fivem()), "{name} should not match");
+        }
+    }
+
+    #[test]
+    fn matching_ignores_case_and_the_extension() {
+        assert!(matches_trigger("FIVEM.EXE", &fivem()));
+        assert!(matches_trigger("fivem_b2802_gtaprocess.exe", &fivem()));
+        assert!(matches_trigger(
+            "Cyberpunk2077.exe",
+            &["cyberpunk2077".to_string()]
+        ));
+        assert!(matches_trigger(
+            "Cyberpunk2077.exe",
+            &["Cyberpunk2077.exe".to_string()]
+        ));
+    }
+
+    #[test]
+    fn any_app_can_be_a_trigger() {
+        // The whole point: nothing here is FiveM-specific.
+        let triggers = vec!["RocketLeague.exe".to_string(), "obs64".to_string()];
+        assert!(matches_trigger("RocketLeague.exe", &triggers));
+        assert!(matches_trigger("obs64.exe", &triggers));
+        assert!(!matches_trigger("FiveM.exe", &triggers));
+    }
+
+    #[test]
+    fn an_empty_trigger_list_matches_nothing() {
+        assert!(!matches_trigger("FiveM.exe", &[]));
+        // A blank entry must not become a wildcard.
+        assert!(!matches_trigger("anything.exe", &["  ".to_string()]));
     }
 }

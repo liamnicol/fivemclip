@@ -115,7 +115,7 @@ pub fn get_status(state: State<AppState>) -> Status {
     Status {
         recorder,
         ffmpeg_found: state.ffmpeg.is_some(),
-        fivem_running: sysprobe::is_fivem_running(),
+        fivem_running: sysprobe::is_trigger_running(&settings.trigger_processes),
         estimated_buffer_bytes: settings.estimated_buffer_bytes(),
         library_bytes: library::total_size(&settings),
         space: free
@@ -153,6 +153,12 @@ pub fn disk_free(path: String) -> Option<u64> {
         }
         probe = probe.parent()?;
     }
+}
+
+/// Running executables, heaviest first, for the trigger picker.
+#[tauri::command]
+pub fn running_processes() -> Vec<String> {
+    sysprobe::running_processes(60)
 }
 
 #[tauri::command]

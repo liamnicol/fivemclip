@@ -22,7 +22,13 @@ home.
 - **ImgBB upload** for screenshots, with the link copied to your clipboard.
 - **YouTube hand-off** for clips (see below).
 - **Tray resident.** Closing the window keeps recording. Optionally only records
-  while FiveM is actually running, so it is not burning your GPU on the desktop.
+  while a game you have named is running, so it is not burning your GPU on the
+  desktop.
+
+Nothing in the capture path is FiveM-specific - it records the screen, so it
+works for any game or application. Settings has a list of executables that mean
+"record now", pre-filled with FiveM and RedM; add anything you like, or turn the
+condition off and have it always running.
 
 Everything is written to `%USERPROFILE%\Videos\FiveMClip` by default and stays
 there.

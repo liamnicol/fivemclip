@@ -260,8 +260,28 @@
             <legend>Behaviour</legend>
             <label class="checkbox">
               <input type="checkbox" id="only_while_fivem_running" />
-              <span>Only record while FiveM is running</span>
+              <span>Only record while one of these apps is running</span>
             </label>
+            <div class="field" id="triggers-field">
+              <span>Apps to record</span>
+              <div class="chips" id="trigger-list"></div>
+              <span class="row">
+                <input
+                  type="text"
+                  id="trigger-input"
+                  list="running-processes"
+                  placeholder="e.g. Cyberpunk2077.exe"
+                  autocomplete="off"
+                />
+                <button type="button" class="btn btn-ghost" id="trigger-add">Add</button>
+              </span>
+              <datalist id="running-processes"></datalist>
+              <small class="muted">
+                Start typing to pick from what is running now. Nothing here is
+                specific to FiveM &mdash; the recorder captures the screen, so
+                any app works.
+              </small>
+            </div>
             <label class="checkbox">
               <input type="checkbox" id="autostart" />
               <span>Start with Windows</span>

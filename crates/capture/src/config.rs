@@ -60,9 +60,15 @@ pub struct Settings {
     pub auto_prune: bool,
     pub max_library_gb: u32,
 
-    /// Only hold the replay buffer open while FiveM is actually running, so we
-    /// are not burning GPU and disk on someone's desktop all day.
+    /// Only hold the replay buffer open while one of `trigger_processes` is
+    /// running, so we are not burning GPU and disk on someone's desktop all day.
     pub only_while_fivem_running: bool,
+    /// Executables whose presence means "record now".
+    ///
+    /// Nothing in the capture path is FiveM-specific - Desktop Duplication
+    /// takes the whole screen - so this is the only thing tying the app to one
+    /// game, and there is no reason for it to be a hardcoded list.
+    pub trigger_processes: Vec<String>,
     pub start_minimized: bool,
     pub autostart: bool,
     /// Cleared until the user has been through first-run setup. The replay
@@ -110,6 +116,7 @@ impl Default for Settings {
             auto_prune: false,
             max_library_gb: 50,
             only_while_fivem_running: true,
+            trigger_processes: vec!["FiveM".into(), "RedM".into()],
             start_minimized: false,
             autostart: false,
             setup_complete: false,
@@ -169,6 +176,12 @@ impl Settings {
         self.bitrate_kbps = self.bitrate_kbps.clamp(2_000, 150_000);
         self.mic_gain_db = self.mic_gain_db.clamp(-30.0, 30.0);
         self.screenshot_quality = self.screenshot_quality.clamp(2, 31);
+        self.trigger_processes.retain(|p| !p.trim().is_empty());
+        // An empty list with the toggle on would mean "record when nothing is
+        // running", which is never what anyone meant.
+        if self.trigger_processes.is_empty() {
+            self.only_while_fivem_running = false;
+        }
         // A floor below a couple of gigabytes is not a floor: Windows itself
         // starts misbehaving long before a disk is genuinely full.
         self.min_free_gb = self.min_free_gb.clamp(2, 500);

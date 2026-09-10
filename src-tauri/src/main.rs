@@ -38,6 +38,7 @@ fn main() {
             commands::start_buffer,
             commands::stop_buffer,
             commands::list_monitors,
+            commands::running_processes,
             commands::disk_free,
             commands::reprobe,
             commands::save_clip,
@@ -282,7 +283,7 @@ fn spawn_watchdog(app: tauri::AppHandle) {
         }
 
         let should_run = if settings.only_while_fivem_running {
-            sysprobe::is_fivem_running()
+            sysprobe::is_trigger_running(&settings.trigger_processes)
         } else {
             true
         };

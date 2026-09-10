@@ -350,3 +350,20 @@ kbd {
 
 /* Warn before someone picks a buffer their drive cannot hold. */
 .tight { color: var(--warn); }
+
+/* ---------- trigger list ---------- */
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips:empty { display: none; }
+
+.chip-item {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 6px 5px 13px; font-size: 13px;
+}
+.chip-item button {
+  background: none; border: 0; color: var(--muted);
+  cursor: pointer; font: inherit; line-height: 1;
+  padding: 3px 7px; border-radius: 999px;
+}
+.chip-item button:hover { background: var(--accent); color: #fff; }
