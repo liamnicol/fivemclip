@@ -450,28 +450,115 @@ $("mic_mode").addEventListener("change", () => {
   $("mic-gain-field").style.display = $("mic_mode").value === "off" ? "none" : "";
 });
 
+/* ---------------- hotkeys ---------------- */
+
+// What gets stored is built from `event.code`, not `event.key`.
+//
+// The Rust side parses these with global-hotkey, which names keys the way
+// `code` does - KeyK, Digit4, Numpad5, Space, BracketLeft. `key` gives the
+// character produced instead, so Numpad5 arrived as "Clear", Space as " " and
+// Shift+1 as "Shift+!", none of which parse. Those bindings were saved happily
+// and then failed to register.
+const CODE_LABELS = {
+  Space: "Space",
+  Escape: "Esc",
+  Enter: "Enter",
+  Tab: "Tab",
+  Backspace: "Backspace",
+  Delete: "Delete",
+  Insert: "Insert",
+  Home: "Home",
+  End: "End",
+  PageUp: "Page Up",
+  PageDown: "Page Down",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  CapsLock: "Caps Lock",
+  NumLock: "Num Lock",
+  ScrollLock: "Scroll Lock",
+  PrintScreen: "Print Screen",
+  Pause: "Pause",
+  Backquote: "`",
+  Backslash: "\\",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Comma: ",",
+  Period: ".",
+  Minus: "-",
+  Equal: "=",
+  Quote: "'",
+  Semicolon: ";",
+  Slash: "/",
+  NumpadAdd: "Numpad +",
+  NumpadSubtract: "Numpad -",
+  NumpadMultiply: "Numpad *",
+  NumpadDivide: "Numpad /",
+  NumpadDecimal: "Numpad .",
+  NumpadEnter: "Numpad Enter",
+};
+
+/** Codes the Rust parser understands. Anything else is refused at capture time
+ *  rather than saved and left to fail silently later. */
+function isBindable(code) {
+  return (
+    /^Key[A-Z]$/.test(code) ||
+    /^Digit[0-9]$/.test(code) ||
+    /^Numpad[0-9]$/.test(code) ||
+    /^F([1-9]|1[0-2])$/.test(code) ||
+    code in CODE_LABELS
+  );
+}
+
+/** How a stored combo is shown. "Ctrl+KeyS" reads as Ctrl+S. */
+function prettyCombo(combo) {
+  return combo
+    .split("+")
+    .map((part) => {
+      if (/^Key[A-Z]$/.test(part)) return part.slice(3);
+      if (/^Digit[0-9]$/.test(part)) return part.slice(5);
+      if (/^Numpad[0-9]$/.test(part)) return `Numpad ${part.slice(6)}`;
+      return CODE_LABELS[part] ?? part;
+    })
+    .join("+");
+}
+
+/** The input shows a readable label; the accelerator rides along on the
+ *  element, because it is the accelerator that has to be saved. */
+function setCombo(input, combo) {
+  input.dataset.combo = combo;
+  input.value = combo ? prettyCombo(combo) : "";
+}
+
 document.querySelectorAll(".hotkey").forEach((input) => {
   input.addEventListener("focus", () => input.classList.add("capturing"));
   input.addEventListener("blur", () => input.classList.remove("capturing"));
   input.addEventListener("keydown", (event) => {
     event.preventDefault();
+
+    // A bare modifier is someone still reaching for the real key.
+    if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) return;
+
+    if (event.key === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+      setCombo(input, "");
+      input.blur();
+      return;
+    }
+
+    if (!isBindable(event.code)) {
+      toast("That key cannot be used as a hotkey — try a function key or a letter", true);
+      return;
+    }
+
     const parts = [];
     if (event.ctrlKey) parts.push("Ctrl");
     if (event.shiftKey) parts.push("Shift");
     if (event.altKey) parts.push("Alt");
     if (event.metaKey) parts.push("Super");
+    parts.push(event.code);
 
-    const key = event.key;
-    // A bare modifier is someone still reaching for the real key.
-    if (["Control", "Shift", "Alt", "Meta"].includes(key)) return;
-
-    if (key === "Escape") {
-      input.value = "";
-      input.blur();
-      return;
-    }
-    parts.push(key.length === 1 ? key.toUpperCase() : key);
-    input.value = parts.join("+");
+    setCombo(input, parts.join("+"));
     input.blur();
   });
 });
@@ -509,11 +596,11 @@ function applySettings(next) {
   $("mic_mode").value = next.mic_mode;
   $("mic_gain_db").value = next.mic_gain_db;
   $("system_gain_db").value = next.system_gain_db;
-  $("hotkey_save_clip").value = next.hotkey_save_clip;
-  $("hotkey_screenshot").value = next.hotkey_screenshot;
-  $("hotkey_region").value = next.hotkey_region;
-  $("hotkey_session").value = next.hotkey_session;
-  $("hotkey_toggle_buffer").value = next.hotkey_toggle_buffer;
+  setCombo($("hotkey_save_clip"), next.hotkey_save_clip);
+  setCombo($("hotkey_screenshot"), next.hotkey_screenshot);
+  setCombo($("hotkey_region"), next.hotkey_region);
+  setCombo($("hotkey_session"), next.hotkey_session);
+  setCombo($("hotkey_toggle_buffer"), next.hotkey_toggle_buffer);
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
   $("min_free_gb").value = next.min_free_gb;
@@ -536,9 +623,9 @@ function applySettings(next) {
   updateEstimate();
   $("mic-gain-field").style.display = next.mic_mode === "off" ? "none" : "";
 
-  $("hint-clip").textContent = next.hotkey_save_clip || "no hotkey";
-  $("hint-shot").textContent = next.hotkey_screenshot || "no hotkey";
-  $("hint-region").textContent = next.hotkey_region || "no hotkey";
+  $("hint-clip").textContent = prettyCombo(next.hotkey_save_clip) || "no hotkey";
+  $("hint-shot").textContent = prettyCombo(next.hotkey_screenshot) || "no hotkey";
+  $("hint-region").textContent = prettyCombo(next.hotkey_region) || "no hotkey";
 }
 
 /* ---------------- trigger apps ---------------- */
@@ -604,11 +691,13 @@ function collectSettings() {
     mic_mode: $("mic_mode").value,
     mic_gain_db: Number($("mic_gain_db").value),
     system_gain_db: Number($("system_gain_db").value),
-    hotkey_save_clip: $("hotkey_save_clip").value,
-    hotkey_screenshot: $("hotkey_screenshot").value,
-    hotkey_region: $("hotkey_region").value,
-    hotkey_session: $("hotkey_session").value,
-    hotkey_toggle_buffer: $("hotkey_toggle_buffer").value,
+    // dataset, not value: the box shows "Ctrl+S" and the backend needs
+    // "Ctrl+KeyS".
+    hotkey_save_clip: $("hotkey_save_clip").dataset.combo ?? "",
+    hotkey_screenshot: $("hotkey_screenshot").dataset.combo ?? "",
+    hotkey_region: $("hotkey_region").dataset.combo ?? "",
+    hotkey_session: $("hotkey_session").dataset.combo ?? "",
+    hotkey_toggle_buffer: $("hotkey_toggle_buffer").dataset.combo ?? "",
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
     min_free_gb: Number($("min_free_gb").value),

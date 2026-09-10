@@ -16,9 +16,24 @@ enum Action {
 
 /// Rebind every hotkey from the current settings. Called at startup and after
 /// any settings save, so the old bindings always go first.
+///
+/// Always on its own thread. The plugin registers by posting to the main thread
+/// and blocking on the reply, so calling it *from* the main thread waits for a
+/// task that cannot run until the wait ends. Sync Tauri commands run on that
+/// thread - the same trap that made the editor window deadlock.
 pub fn register(app: &AppHandle, settings: &Settings) {
+    let app = app.clone();
+    let settings = settings.clone();
+    std::thread::spawn(move || {
+        crate::diagnostics::span("registering hotkeys", || register_now(&app, &settings));
+    });
+}
+
+fn register_now(app: &AppHandle, settings: &Settings) {
     let shortcuts = app.global_shortcut();
-    let _ = shortcuts.unregister_all();
+    if let Err(e) = shortcuts.unregister_all() {
+        crate::diagnostics::log(format!("could not clear the old hotkeys: {e}"));
+    }
 
     for (combo, action) in [
         (&settings.hotkey_save_clip, Action::SaveClip),
@@ -29,6 +44,7 @@ pub fn register(app: &AppHandle, settings: &Settings) {
     ] {
         let combo = combo.trim();
         if combo.is_empty() {
+            crate::diagnostics::log(format!("{action:?}: no hotkey set"));
             continue;
         }
         let result = shortcuts.on_shortcut(combo, move |app, _shortcut, event| {
@@ -43,12 +59,16 @@ pub fn register(app: &AppHandle, settings: &Settings) {
             std::thread::spawn(move || run(&app, action));
         });
 
-        if let Err(e) = result {
-            notify(
-                app,
-                "Hotkey unavailable",
-                &format!("{combo} could not be registered - another app may have it. ({e})"),
-            );
+        match result {
+            Ok(()) => crate::diagnostics::log(format!("{action:?}: bound to {combo}")),
+            Err(e) => {
+                crate::diagnostics::log(format!("{action:?}: {combo} failed - {e}"));
+                notify(
+                    app,
+                    "Hotkey unavailable",
+                    &format!("{combo} could not be registered - another app may have it. ({e})"),
+                );
+            }
         }
     }
 }
@@ -189,4 +209,67 @@ fn upload_and_notify(app: &AppHandle, key: &str, path: std::path::PathBuf) {
             Err(e) => notify(&app, "Screenshot saved, upload failed", &e),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use fivemclip_capture::config::Settings;
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    fn parses(combo: &str) -> bool {
+        Shortcut::from_str(combo).is_ok()
+    }
+
+    #[test]
+    fn every_default_hotkey_parses() {
+        let s = Settings::default();
+        for combo in [
+            &s.hotkey_save_clip,
+            &s.hotkey_screenshot,
+            &s.hotkey_region,
+            &s.hotkey_session,
+            &s.hotkey_toggle_buffer,
+        ] {
+            assert!(parses(combo), "default hotkey {combo:?} does not parse");
+        }
+    }
+
+    /// The front end builds accelerators out of `event.code`. These are the
+    /// shapes it produces; if the parser ever stops taking one of them, a user
+    /// gets to save a binding that silently never fires.
+    #[test]
+    fn the_shapes_the_front_end_produces_parse() {
+        for combo in [
+            "F7",
+            "KeyK",
+            "Digit4",
+            "Numpad5",
+            "Space",
+            "BracketLeft",
+            "Semicolon",
+            "ArrowUp",
+            "Insert",
+            "Ctrl+F9",
+            "Ctrl+Shift+KeyS",
+            "Shift+Digit1",
+            "Alt+KeyX",
+            "Ctrl+Alt+Numpad0",
+        ] {
+            assert!(parses(combo), "{combo:?} does not parse");
+        }
+    }
+
+    /// What it used to produce, kept as a record of the bug: `event.key` gives
+    /// the character rather than the key, and none of these ever registered.
+    #[test]
+    fn the_shapes_it_used_to_produce_do_not() {
+        for combo in ["Clear", " ", "Shift+!", "Shift+@"] {
+            assert!(
+                !parses(combo),
+                "{combo:?} parses now - the mapping can be simplified"
+            );
+        }
+    }
 }

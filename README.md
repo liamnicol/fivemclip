@@ -129,8 +129,12 @@ and that copy behaves like an installed one.
 | Start / stop a session | `F8` |
 | Toggle the buffer | `Ctrl+F9` |
 
-All five are rebindable in Settings. If Windows refuses one because another
-program already holds it, you get a notification saying so when you save.
+All five are rebindable in Settings → Hotkeys: click a box, press the keys you
+want, then **Save settings**. `Esc` clears a binding.
+
+Function keys, letters, digits, numpad keys and combinations with
+`Ctrl`/`Shift`/`Alt` all work. If Windows refuses one because another program
+already holds it, you get a notification saying so when you save.
 
 ## Recording a whole session
 

@@ -67,6 +67,17 @@ WebKitGTK.
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
 
+**Hotkeys are `event.code`, not `event.key`.** global-hotkey names keys the way
+`code` does - `KeyK`, `Numpad5`, `Space`, `BracketLeft`. `key` gives the
+character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as
+`Shift+!`, none of which parse. Those saved fine and then never registered. The
+input shows a readable label and carries the accelerator in `dataset.combo`;
+`collectSettings` reads the dataset, never the value.
+
+**Registering hotkeys must not happen on the main thread.** The plugin posts to
+the main thread and blocks on the reply, so calling it from there waits on a
+task that cannot run until the wait ends - the same trap as building a window.
+
 **A session is MPEG-TS segments until it is stopped.** Nothing is ever written
 to the session file while recording - it is assembled from the ring afterwards.
 So the output container buys no crash safety, which is why sessions moved from
