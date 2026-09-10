@@ -124,6 +124,11 @@ jobs:
           Write-Host "Build label: $label"
 
       - name: Build installer
+        env:
+          # Updates are signed so that compromising the GitHub account is not
+          # enough to push code to everyone's machine - the signature has to
+          # match a key the installed app already trusts.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: cargo tauri build
 
       # --- Code signing --------------------------------------------------
@@ -194,6 +199,33 @@ jobs:
           # archive with no wrapper, so "extract here" scatters the marker file
           # and turns whatever folder they extracted into the portable root.
           Compress-Archive -Path $staging -DestinationPath "dist/FiveMClip-$label-portable.zip" -Force
+
+          # The update manifest. Only written for tagged builds: pointing the
+          # updater at a dev build would push unreleased code to everyone.
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+              $signature = Get-ChildItem target/release/bundle/nsis/*.exe.sig |
+                  Select-Object -First 1
+              if (-not $signature) {
+                  throw "No .sig file. createUpdaterArtifacts is off, or TAURI_SIGNING_PRIVATE_KEY is not set."
+              }
+
+              $manifest = [ordered]@{
+                  version   = $label
+                  notes     = "See the release notes at https://github.com/$env:GITHUB_REPOSITORY/releases/tag/v$label"
+                  pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                  platforms = [ordered]@{
+                      "windows-x86_64" = [ordered]@{
+                          signature = (Get-Content $signature.FullName -Raw).Trim()
+                          # Must be the renamed asset, not what the bundler
+                          # produced, or the updater downloads a 404.
+                          url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$label/FiveMClip-$label-setup.exe"
+                      }
+                  }
+              }
+              $manifest | ConvertTo-Json -Depth 5 | Set-Content dist/latest.json -Encoding utf8
+              Write-Host "Wrote dist/latest.json"
+          }
+
           Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4

@@ -26,6 +26,13 @@
 
     <main>
       <section class="view is-active" id="view-record">
+        <div class="update" id="update-banner" hidden>
+          <div>
+            <strong>Version <span id="update-version"></span> is available</strong>
+            <p class="muted" id="update-notes"></p>
+          </div>
+          <button class="btn btn-primary" id="update-install">Update and restart</button>
+        </div>
         <div id="alerts"></div>
 
         <div class="hero">
@@ -106,7 +113,7 @@
             <label class="field">
               <span>Replay buffer length</span>
               <span class="row">
-                <input type="range" id="buffer_seconds" min="15" max="900" step="15" />
+                <input type="range" id="buffer_seconds" min="15" max="1200" step="15" />
                 <output id="buffer_seconds_out"></output>
               </span>
               <small id="buffer_estimate" class="muted"></small>
@@ -336,7 +343,7 @@
         <label class="field">
           <span>How much should it remember?</span>
           <span class="row">
-            <input type="range" id="setup_buffer" min="30" max="600" step="30" />
+            <input type="range" id="setup_buffer" min="30" max="1200" step="30" />
             <output id="setup_buffer_out"></output>
           </span>
           <small class="muted" id="setup_estimate"></small>

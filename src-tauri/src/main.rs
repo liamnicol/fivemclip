@@ -8,6 +8,7 @@ mod diagnostics;
 mod hotkeys;
 mod library;
 mod state;
+mod updates;
 mod upload;
 
 use std::sync::atomic::Ordering;
@@ -27,6 +28,8 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -63,6 +66,8 @@ fn main() {
             commands::upload_imgbb,
             commands::youtube_handoff,
             commands::open_url,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;

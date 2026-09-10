@@ -7,6 +7,18 @@ screenshots, and shares them without an account, a watermark, or a subscription.
 Built for handing out to a community: one installer, no login, nothing phones
 home.
 
+## Updates
+
+FiveMClip checks for a new release when it starts and shows a banner if one
+exists. Nothing downloads until you press the button - a recorder that restarts
+itself mid-session is worse than one running a week behind.
+
+Updates are signed. The installed app only accepts an update whose signature
+matches a key baked into it at build time, so compromising the GitHub account
+is not by itself enough to push code to anyone's machine.
+
+The portable build does not self-update; download the new zip.
+
 ## Scope
 
 FiveMClip is built and maintained for FiveM. It records the screen rather than a

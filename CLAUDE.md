@@ -81,6 +81,16 @@ flushed per line. `diagnostics::span()` logs begin/end pairs: a `begin` with no
 
 Devtools are enabled in release builds. Right-click any window, Inspect.
 
+## Releasing
+
+Bump the version in **both** `Cargo.toml` and `src-tauri/tauri.conf.json` -
+checks fail if they disagree - then tag `vX.Y.Z` and push the tag. CI builds,
+signs, writes `latest.json` and publishes the release.
+
+`TAURI_SIGNING_PRIVATE_KEY` must stay set as a repository secret. Losing it
+means no installed copy can ever be updated again; they would all need a manual
+reinstall.
+
 ## Past bugs worth knowing
 
 `docs/open-bug-editor.md` records a deadlock that cost four failed fixes. Read

@@ -665,6 +665,33 @@ function showSetup() {
   refreshSetupEstimate();
 }
 
+/* ---------------- updates ---------------- */
+
+// Checked once on launch and never nagged about again. Nothing downloads until
+// the button is pressed: restarting a recorder out from under someone
+// mid-session is worse than running an old version for another day.
+async function checkForUpdate() {
+  const update = await invoke("check_for_update").catch(() => null);
+  if (!update) return;
+
+  $("update-version").textContent = update.version;
+  $("update-notes").textContent = (update.notes ?? "").split("\n")[0];
+  $("update-banner").hidden = false;
+}
+
+$("update-install").addEventListener("click", async () => {
+  const button = $("update-install");
+  button.disabled = true;
+  button.textContent = "Downloading…";
+  try {
+    // On success the app restarts, so nothing after this runs.
+    await call("install_update");
+  } catch {
+    button.disabled = false;
+    button.textContent = "Update and restart";
+  }
+});
+
 /* ---------------- boot ---------------- */
 
 async function boot() {
@@ -690,6 +717,10 @@ async function boot() {
   await pollStatus();
   await refreshLibrary();
   setInterval(pollStatus, 1000);
+
+  // Last, and never blocking startup: an unreachable update server should not
+  // delay someone getting to the record button.
+  checkForUpdate();
 }
 
 boot();
