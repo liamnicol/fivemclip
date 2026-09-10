@@ -27,6 +27,7 @@ body { display: flex; flex-direction: column; }
 .bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 14px;
   background: var(--panel);
@@ -35,6 +36,9 @@ body { display: flex; flex-direction: column; }
 }
 .spacer { flex: 1; }
 
+/* One radiogroup, two visual clusters: hiding and marking up are opposite
+   jobs, but only ever one tool is armed. */
+.toolgroups { display: flex; flex-wrap: wrap; gap: 8px; }
 .tools { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 10px; }
 
 .tool {
@@ -54,6 +58,15 @@ body { display: flex; flex-direction: column; }
     conic-gradient(#8b93a7 25%, #4a5266 0 50%, #8b93a7 0 75%, #4a5266 0) 0 0 / 7px 7px;
 }
 .swatch-blur { background: linear-gradient(135deg, #8b93a7, #2b3145); filter: blur(1.5px); }
+
+/* The mark-up tools have no miniature of their effect to show, so they get a
+   line drawing of the shape instead. currentColor keeps them in step with the
+   label as the button goes from muted to active. */
+.glyph {
+  width: 15px; height: 15px; flex: none;
+  fill: none; stroke: currentColor;
+  stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
 
 .btn {
   background: var(--panel-2); color: var(--text);

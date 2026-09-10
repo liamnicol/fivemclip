@@ -313,7 +313,7 @@ function renderLibrary() {
     // upload again - a second upload would just orphan the first one on ImgBB.
     const share = isVideo
       ? `<button class="btn" data-act="youtube">To YouTube</button>`
-      : `<button class="btn" data-act="edit">Hide things</button>
+      : `<button class="btn" data-act="edit">Edit</button>
          ${
            item.link
              ? `<button class="btn" data-act="copy-link">Copy link</button>`

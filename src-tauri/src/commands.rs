@@ -640,7 +640,7 @@ pub fn open_editor(app: AppHandle, path: String) -> Result<(), String> {
                 EDITOR_WINDOW,
                 tauri::WebviewUrl::App("editor.html".into()),
             )
-            .title("Hide things - FiveMClip")
+            .title("Edit image - FiveMClip")
             .inner_size(1100.0, 780.0)
             .min_inner_size(640.0, 480.0)
             .build()

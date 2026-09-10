@@ -67,6 +67,11 @@ WebKitGTK.
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
 
+**The editor composes at full image size, then blits the crop.** Pixelate and
+blur read pixels back out of the canvas they are painting on, so painting into
+a cropped canvas reads the wrong source rectangle. Marks are stored in original
+image coordinates; the crop is just another undoable mark.
+
 ## Testing the front end without Windows
 
 `ui/` is plain HTML, so it renders in any browser with `window.__TAURI__`

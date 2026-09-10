@@ -35,7 +35,7 @@ UI thread, and that is precisely the deadlock.
 
 ## Symptoms
 
-1. Clicking **Hide things** on a screenshot opens a window with the correct
+1. Clicking **Edit** on a screenshot opens a window with the correct
    title bar and a **completely white** client area. No app UI at all - not the
    dark background, not the toolbar.
 2. The app then cannot be closed. Not by the window's X, not by the tray's

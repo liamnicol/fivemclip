@@ -18,14 +18,24 @@ pub struct Release {
 /// Newest first. Add to the top when tagging a release; anything older than
 /// the version a user last saw is skipped, so someone jumping three versions
 /// gets all three.
-pub const RELEASES: &[Release] = &[Release {
-    version: "0.1.4",
-    lines: &[
-        "Screenshots remember their ImgBB link - upload once, copy it again any time from the Library.",
-        "The disk space sliders finally show their value, so \"stop recording when free space drops below\" says below what.",
-        "This screen: after an update, a short note on what changed.",
-    ],
-}];
+pub const RELEASES: &[Release] = &[
+    Release {
+        version: "0.1.5",
+        lines: &[
+            "The screenshot editor can mark things up as well as hide them: Arrow, Box and Crop, alongside the redaction tools.",
+            "Arrows and boxes are drawn with a dark outline, so one colour stays readable on a night street and on a blown-out minimap.",
+            "Crop is undoable like everything else - it is applied when you save, not when you drag it.",
+        ],
+    },
+    Release {
+        version: "0.1.4",
+        lines: &[
+            "Screenshots remember their ImgBB link - upload once, copy it again any time from the Library.",
+            "The disk space sliders finally show their value, so \"stop recording when free space drops below\" says below what.",
+            "This screen: after an update, a short note on what changed.",
+        ],
+    },
+];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WhatsNew {

@@ -2,12 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Hide things</title>
+    <title>Edit image</title>
     <link rel="stylesheet" href="editor.css" />
   </head>
   <body>
     <header class="bar">
-      <div class="tools" role="radiogroup" aria-label="Redaction tool">
+      <!-- Hiding and marking up are opposite jobs - one takes information away,
+           the other points at it - so they are separate groups rather than one
+           row of six. -->
+      <div class="toolgroups" role="radiogroup" aria-label="Tool">
+      <div class="tools">
         <button class="tool is-active" data-tool="black" role="radio" aria-checked="true">
           <span class="swatch swatch-black"></span>Black out
         </button>
@@ -17,6 +21,28 @@
         <button class="tool" data-tool="blur" role="radio" aria-checked="false">
           <span class="swatch swatch-blur"></span>Blur
         </button>
+      </div>
+
+      <div class="tools">
+        <button class="tool" data-tool="arrow" role="radio" aria-checked="false">
+          <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 13.5 12 4M7 3.6h5.6v5.6" />
+          </svg>
+          Arrow
+        </button>
+        <button class="tool" data-tool="box" role="radio" aria-checked="false">
+          <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.2" />
+          </svg>
+          Box
+        </button>
+        <button class="tool" data-tool="crop" role="radio" aria-checked="false">
+          <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4.6 1.4v10h10M1.4 4.6h10v10" />
+          </svg>
+          Crop
+        </button>
+      </div>
       </div>
 
       <div class="spacer"></div>
@@ -39,8 +65,8 @@
     </main>
 
     <footer class="hint">
-      Drag over anything you want hidden · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo ·
-      <kbd>Esc</kbd> close
+      Drag on the image to place the selected tool · <kbd>Ctrl</kbd>+<kbd>Z</kbd>
+      undo · <kbd>Esc</kbd> close
     </footer>
 
     <script src="editor.js"></script>

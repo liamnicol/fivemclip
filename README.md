@@ -113,13 +113,16 @@ and that copy behaves like an installed one.
 
 All three are rebindable in Settings.
 
-## Hiding things in screenshots
+## Editing screenshots
 
-Screenshots have a **Hide things** button in the Library, and region captures
-can open it automatically (Settings → Screenshots). Drag a box over anything
-that should not be shared - a name, a plate, staff chat, a warrant reference.
+Screenshots have an **Edit** button in the Library, and region captures can open
+the editor automatically (Settings → Screenshots). Pick a tool and drag on the
+image; `Ctrl`+`Z` undoes, and nothing is written until you save.
 
-Three tools, and the difference between them matters:
+### Hiding things
+
+Drag a box over anything that should not be shared - a name, a plate, staff
+chat, a warrant reference. Three tools, and the difference between them matters:
 
 | | What it does | Safe for real details? |
 | --- | --- | --- |
@@ -133,6 +136,20 @@ is - and heavy blur is better but not a guarantee. For a real name, address,
 plate or case reference, use **Black out**; it is the default for that reason.
 Pixelate and blur are there for when you want to obscure something without the
 screenshot looking censored.
+
+### Marking things up
+
+| | What it does |
+| --- | --- |
+| **Arrow** | Points at something. Drag from the tail to the tip. |
+| **Box** | Outlines something without covering it. |
+| **Crop** | Trims the image down to the rectangle you drag. |
+
+Arrows and boxes are drawn with a dark outline so one colour stays readable on
+both a night street and a white minimap. Crop is undoable like everything else -
+it is applied when you save, not when you drag it.
+
+### Saving
 
 Saving overwrites the original, so an unredacted copy is not left sitting in
 your screenshots folder. **Save a copy** keeps both, when the original still
