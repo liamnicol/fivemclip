@@ -1,3 +1,13 @@
+/* The `hidden` attribute hides an element through the user-agent stylesheet's
+   [hidden] { display: none } rule, which ANY author rule setting `display`
+   beats - specificity does not come into it, author rules simply win. So
+   `.setup { display: flex }` quietly made `el.hidden = true` a no-op and the
+   setup screen could never be dismissed.
+
+   Declaring it here, once, with !important means adding a display rule to a
+   component can never resurrect that bug. */
+[hidden] { display: none !important; }
+
 /* The overlay is a still photograph of the screen with a hole cut in it, not a
    transparent window over the live desktop. Selecting against a frozen frame
    means a notification cannot pop up between the drag and the crop. */
