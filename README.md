@@ -47,10 +47,26 @@ there.
 Grab the installer from the [Releases](../../releases) page and run it. It
 installs per-user, so there is no UAC prompt.
 
-Releases are not code-signed, so Windows SmartScreen will show
-**"Windows protected your PC"**. Click **More info**, then **Run anyway**. If
-you would rather verify before trusting it, every release is scanned on
-VirusTotal and the source of what you are installing is right here.
+### Windows will try to stop you
+
+Releases are not code-signed, so Windows SmartScreen blocks the installer. This
+is not a sign anything is wrong - it is what Windows shows for any application
+whose publisher it does not recognise, which includes every small project that
+has not paid for a certificate.
+
+You will see this:
+
+<img src="docs/images/smartscreenpre.png" alt="SmartScreen: Windows protected your PC, with a More info link" width="420">
+
+Click **More info**. The dialog expands to show what is being run:
+
+<img src="docs/images/smartscreenpost.png" alt="SmartScreen expanded, showing the application name and a Run anyway button" width="420">
+
+Then click **Run anyway**.
+
+"Unknown publisher" is expected - it means unsigned, not unsafe. If you would
+rather check before trusting it: every release is scanned on VirusTotal, and
+the source of exactly what you are installing is in this repository.
 
 ### Portable
 
