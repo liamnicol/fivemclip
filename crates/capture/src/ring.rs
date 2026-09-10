@@ -31,6 +31,23 @@ pub struct Recorder {
     settings: Settings,
     pipeline: &'static Pipeline,
     running: Option<Running>,
+    session: Option<Session>,
+}
+
+/// A whole-session recording in progress.
+///
+/// This is not a second encode. The replay buffer is already writing every
+/// frame to disk as short segments; a session recording just means "stop
+/// recycling them from here, and remember where here was". At the end the
+/// segments from that point are concatenated. One encode, no extra GPU cost,
+/// and no second ffmpeg process competing for the encoder.
+#[derive(Debug, Clone)]
+struct Session {
+    /// Segments written at or after this instant belong to the session.
+    /// Compared against file mtimes, so it has to be wall clock rather than
+    /// an Instant.
+    started_at: std::time::SystemTime,
+    label: String,
 }
 
 struct Running {
@@ -49,6 +66,9 @@ pub struct RecorderStatus {
     pub pipeline: String,
     pub has_audio: bool,
     pub warnings: Vec<String>,
+    pub session_active: bool,
+    pub session_seconds: u64,
+    pub session_bytes: u64,
 }
 
 impl Recorder {
@@ -58,6 +78,7 @@ impl Recorder {
             settings,
             pipeline,
             running: None,
+            session: None,
         }
     }
 
@@ -85,13 +106,43 @@ impl Recorder {
             ),
             None => (0, Vec::new(), false),
         };
+        let (session_seconds, session_bytes) = match &self.session {
+            Some(session) => (
+                session
+                    .started_at
+                    .elapsed()
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+                self.session_bytes_on_disk(),
+            ),
+            None => (0, 0),
+        };
+
         RecorderStatus {
             running,
             seconds_buffered: seconds,
             pipeline: self.pipeline.label.to_string(),
             has_audio,
             warnings,
+            session_active: self.session.is_some(),
+            session_seconds,
+            session_bytes,
         }
+    }
+
+    pub fn session_active(&self) -> bool {
+        self.session.is_some()
+    }
+
+    fn session_bytes_on_disk(&self) -> u64 {
+        let Some(session) = &self.session else {
+            return 0;
+        };
+        segments_since(&self.settings.ring_dir(), session.started_at)
+            .into_iter()
+            .filter_map(|(path, _)| std::fs::metadata(path).ok())
+            .map(|m| m.len())
+            .sum()
     }
 
     pub fn apply_settings(&mut self, settings: Settings, pipeline: &'static Pipeline) {
@@ -113,7 +164,11 @@ impl Recorder {
 
         let ring = self.settings.ring_dir();
         fs::create_dir_all(&ring).map_err(|e| format!("could not create buffer folder: {e}"))?;
-        clear_ring(&ring);
+        // A restart in the middle of a session must keep what the session has
+        // recorded so far.
+        if self.session.is_none() {
+            clear_ring(&ring);
+        }
 
         let mut warnings = Vec::new();
 
@@ -246,16 +301,33 @@ impl Recorder {
         }
         a.extend(self.pipeline.encoder_args(s));
 
-        // Enough slots for the whole buffer plus a couple in hand, so the
-        // segment currently being written never clobbers one we still need.
-        let wrap = s.buffer_seconds.div_ceil(SEGMENT_SECONDS) + 2;
         a.extend([
             "-f".into(),
             "segment".into(),
             "-segment_time".into(),
             SEGMENT_SECONDS.to_string(),
-            "-segment_wrap".into(),
-            wrap.to_string(),
+        ]);
+
+        if self.session.is_some() {
+            // No wrap: during a session every segment is kept, because it is
+            // part of the recording rather than just recent history. Growth is
+            // bounded by the disk guard, not by recycling.
+            //
+            // Numbering continues past whatever is already on disk so the
+            // replay buffer keeps its existing segments across the restart -
+            // starting a session should not throw away the last few minutes.
+            a.extend([
+                "-segment_start_number".into(),
+                next_segment_number(ring).to_string(),
+            ]);
+        } else {
+            // Enough slots for the whole buffer plus a couple in hand, so the
+            // segment currently being written never clobbers one we still need.
+            let wrap = s.buffer_seconds.div_ceil(SEGMENT_SECONDS) + 2;
+            a.extend(["-segment_wrap".into(), wrap.to_string()]);
+        }
+
+        a.extend([
             "-segment_format".into(),
             "mpegts".into(),
             // Without resent headers a segment that happens to be the first one
@@ -267,6 +339,79 @@ impl Recorder {
             ring.join("seg%05d.ts").to_string_lossy().into_owned(),
         ]);
         a
+    }
+
+    /// Begin keeping every segment from now on.
+    ///
+    /// Restarting ffmpeg costs about a second of footage. That is the price of
+    /// changing the segment muxer's recycling behaviour mid-stream, and it is
+    /// far cheaper than running a second encoder for the whole session.
+    pub fn start_session(&mut self) -> Result<(), String> {
+        if self.session.is_some() {
+            return Ok(());
+        }
+        if !self.is_running() {
+            return Err("Start the replay buffer before recording a session.".into());
+        }
+
+        self.session = Some(Session {
+            started_at: std::time::SystemTime::now(),
+            label: chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string(),
+        });
+
+        self.stop();
+        if let Err(e) = self.start() {
+            self.session = None;
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Finish the session and write it out.
+    ///
+    /// Matroska rather than MP4: MP4 writes its index last, so a session ending
+    /// in a game crash or a power cut leaves an unplayable file. Matroska stays
+    /// playable however it ends, which for a recording that may run for hours
+    /// matters more than the container being universally convenient.
+    pub fn stop_session(&mut self) -> Result<PathBuf, String> {
+        let session = self.session.take().ok_or("No session is being recorded.")?;
+
+        // Stopping flushes the segment in progress, so the last few seconds
+        // are not lost.
+        let was_running = self.is_running();
+        self.stop();
+
+        let ring = self.settings.ring_dir();
+        let segments = segments_since(&ring, session.started_at);
+        if segments.is_empty() {
+            if was_running {
+                let _ = self.start();
+            }
+            return Err("That session was too short to save.".into());
+        }
+
+        let dir = self.settings.sessions_dir();
+        fs::create_dir_all(&dir).map_err(|e| format!("could not create sessions folder: {e}"))?;
+        let out = dir.join(format!("Session_{}.mkv", session.label));
+
+        let result = concat_segments(&self.ffmpeg, &ring, &segments, &out);
+
+        // Whatever happened, get back to recording before reporting it.
+        if was_running {
+            let _ = self.start();
+        }
+        result.map(|()| out)
+    }
+
+    /// Abandon the session without writing it out.
+    pub fn discard_session(&mut self) {
+        if self.session.take().is_some() {
+            let was_running = self.is_running();
+            self.stop();
+            if was_running {
+                let _ = self.start();
+            }
+        }
     }
 
     /// Concatenate the newest `seconds` of buffer into an MP4.
@@ -287,64 +432,14 @@ impl Recorder {
         let clips = s.clips_dir();
         fs::create_dir_all(&clips).map_err(|e| format!("could not create clips folder: {e}"))?;
 
-        let list_path = ring.join("concat.txt");
-        let mut list = String::new();
-        for (path, _) in &segments {
-            // The concat demuxer treats backslashes as escapes, and single
-            // quotes must be broken out of.
-            let p = path
-                .to_string_lossy()
-                .replace('\\', "/")
-                .replace('\'', "'\\''");
-            list.push_str(&format!("file '{p}'\n"));
-        }
-        fs::write(&list_path, list).map_err(|e| format!("could not stage clip: {e}"))?;
-
         let out = clips.join(format!(
             "Clip_{}.mp4",
             chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
         ));
 
-        let status = ffmpeg::command(&self.ffmpeg)
-            .args([
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-nostdin",
-                "-y",
-                "-fflags",
-                "+genpts",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-            ])
-            .arg(&list_path)
-            .args([
-                "-c",
-                "copy",
-                // AAC carried in TS uses ADTS framing, which MP4 will not accept.
-                "-bsf:a",
-                "aac_adtstoasc",
-                "-movflags",
-                "+faststart",
-            ])
-            .arg(&out)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .output()
-            .map_err(|e| format!("could not run ffmpeg: {e}"))?;
+        concat_segments(&self.ffmpeg, &ring, &segments, &out)
+            .map_err(|e| format!("Could not save the clip: {e}"))?;
 
-        let _ = fs::remove_file(&list_path);
-
-        if !status.status.success() {
-            let err = String::from_utf8_lossy(&status.stderr);
-            return Err(format!(
-                "Could not save the clip: {}",
-                ffmpeg::explain(&err)
-            ));
-        }
         Ok(out)
     }
 }
@@ -399,6 +494,142 @@ fn newest_segments(
     files.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
     files.truncate(want);
     Ok(files)
+}
+
+/// The number ffmpeg should give the next segment it writes.
+///
+/// Segments already on disk are the replay buffer's recent history. Numbering
+/// past them means a restart - which is how a session begins - does not
+/// overwrite the few minutes the user already had buffered.
+fn next_segment_number(ring: &Path) -> u32 {
+    let Ok(entries) = fs::read_dir(ring) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if !path.extension().map(|x| x == "ts").unwrap_or(false) {
+                return None;
+            }
+            path.file_stem()?
+                .to_str()?
+                .strip_prefix("seg")?
+                .parse::<u32>()
+                .ok()
+        })
+        .max()
+        .map(|highest| highest + 1)
+        .unwrap_or(0)
+}
+
+/// Segments written at or after `since`, oldest first.
+fn segments_since(
+    ring: &Path,
+    since: std::time::SystemTime,
+) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let Ok(entries) = fs::read_dir(ring) else {
+        return Vec::new();
+    };
+    let mut files: Vec<(PathBuf, std::time::SystemTime)> = entries
+        .flatten()
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|x| x.eq_ignore_ascii_case("ts"))
+                .unwrap_or(false)
+        })
+        .filter_map(|e| {
+            let meta = e.metadata().ok()?;
+            if meta.len() == 0 {
+                return None;
+            }
+            let modified = meta.modified().ok()?;
+            // A segment finished before the session began belongs to the
+            // replay buffer's history, not to the recording.
+            (modified >= since).then_some((e.path(), modified))
+        })
+        .collect();
+    files.sort_by_key(|(_, modified)| *modified);
+    files
+}
+
+/// Stitch segments into one file without re-encoding.
+///
+/// The output container is chosen by extension: MP4 for clips, which people
+/// upload and scrub, and Matroska for sessions, which need to survive being
+/// interrupted.
+fn concat_segments(
+    ffmpeg_path: &Path,
+    ring: &Path,
+    segments: &[(PathBuf, std::time::SystemTime)],
+    out: &Path,
+) -> Result<(), String> {
+    let list_path = ring.join(format!(
+        "concat-{}.txt",
+        out.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "list".into())
+    ));
+
+    let mut list = String::new();
+    for (path, _) in segments {
+        // The concat demuxer treats backslashes as escapes, and a single quote
+        // has to be broken out of the quoting entirely.
+        let escaped = path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .replace('\'', "'\\''");
+        list.push_str(&format!("file '{escaped}'\n"));
+    }
+    fs::write(&list_path, list).map_err(|e| format!("could not stage the file list: {e}"))?;
+
+    let wants_mp4 = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("mp4"))
+        .unwrap_or(false);
+
+    let mut command = ffmpeg::command(ffmpeg_path);
+    command.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        "-fflags",
+        "+genpts",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+    ]);
+    command.arg(&list_path).args(["-c", "copy"]);
+    if wants_mp4 {
+        command.args([
+            // AAC carried in MPEG-TS uses ADTS framing, which MP4 rejects.
+            "-bsf:a",
+            "aac_adtstoasc",
+            "-movflags",
+            "+faststart",
+        ]);
+    }
+
+    let status = command
+        .arg(out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("could not run ffmpeg: {e}"))?;
+
+    let _ = fs::remove_file(&list_path);
+
+    if status.status.success() {
+        Ok(())
+    } else {
+        Err(ffmpeg::explain(&String::from_utf8_lossy(&status.stderr)))
+    }
 }
 
 #[cfg(test)]
@@ -498,6 +729,39 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .starts_with("seg00000"));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn segment_numbering_continues_past_what_is_already_there() {
+        let dir = scratch("numbering");
+        assert_eq!(next_segment_number(&dir), 0, "empty ring starts at zero");
+
+        seed(&dir, &[("seg00000.ts", 10), ("seg00007.ts", 10)]);
+        // Starting a session restarts ffmpeg. Numbering from zero again would
+        // overwrite the buffered history the user still expects to be able to
+        // clip from.
+        assert_eq!(next_segment_number(&dir), 8);
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_session_only_claims_segments_written_after_it_began() {
+        let dir = scratch("session-window");
+        seed(&dir, &[("seg00000.ts", 10), ("seg00001.ts", 10)]);
+
+        let boundary = std::time::SystemTime::now();
+        std::thread::sleep(Duration::from_millis(40));
+        seed(&dir, &[("seg00002.ts", 10), ("seg00003.ts", 10)]);
+
+        let claimed = segments_since(&dir, boundary);
+        let names: Vec<String> = claimed
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["seg00002.ts", "seg00003.ts"], "{names:?}");
 
         fs::remove_dir_all(&dir).unwrap();
     }

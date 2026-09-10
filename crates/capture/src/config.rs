@@ -67,6 +67,8 @@ pub struct Settings {
     pub hotkey_screenshot: String,
     /// Drag-a-rectangle capture, the way Greenshot and ShareX do it.
     pub hotkey_region: String,
+    /// Start and stop a whole-session recording.
+    pub hotkey_session: String,
     pub hotkey_toggle_buffer: String,
 
     /// Personal ImgBB key. Deliberately per-user: a shared key baked into a
@@ -106,6 +108,7 @@ impl Default for Settings {
             hotkey_save_clip: "F9".into(),
             hotkey_screenshot: "F10".into(),
             hotkey_region: "F11".into(),
+            hotkey_session: "F8".into(),
             hotkey_toggle_buffer: "Ctrl+F9".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
@@ -122,6 +125,12 @@ impl Settings {
 
     pub fn screenshots_dir(&self) -> PathBuf {
         self.output_dir.join("Screenshots")
+    }
+
+    /// Whole-session recordings, kept apart from clips: they are hours long
+    /// and nobody wants them mixed in with the ten-second highlights.
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.output_dir.join("Sessions")
     }
 
     /// Scratch space for the ring buffer. Kept beside the output so it lands on

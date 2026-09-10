@@ -90,6 +90,9 @@ pub fn get_status(state: State<AppState>) -> Status {
             pipeline: "not started".into(),
             has_audio: false,
             warnings: Vec::new(),
+            session_active: false,
+            session_seconds: 0,
+            session_bytes: 0,
         },
     };
     let free = fivemclip_capture::disk::free_for(&settings);
@@ -431,6 +434,66 @@ fn image_dimensions(
         }
     }
     Err("could not read the image size".into())
+}
+
+#[tauri::command]
+pub fn start_session(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let mut guard = state.recorder.lock();
+    let recorder = guard
+        .as_mut()
+        .ok_or("The replay buffer has not been started yet.")?;
+    recorder.start_session()?;
+    drop(guard);
+    notify(
+        &app,
+        "Session recording started",
+        "Everything from here is being kept until you stop.",
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stop_session(app: AppHandle, state: State<AppState>) -> Result<String, String> {
+    let saved = {
+        let mut guard = state.recorder.lock();
+        let recorder = guard.as_mut().ok_or("No session is being recorded.")?;
+        recorder.stop_session()
+    };
+
+    match saved {
+        Ok(path) => {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            notify(&app, "Session saved", &name);
+
+            let pruned = fivemclip_capture::disk::prune(&state.settings.lock().clone());
+            if pruned.deleted > 0 {
+                notify(
+                    &app,
+                    "Old recordings removed",
+                    &format!(
+                        "{} file(s), {:.1} GB, to stay under your library limit.",
+                        pruned.deleted,
+                        pruned.freed_bytes as f64 / 1e9
+                    ),
+                );
+            }
+            Ok(path.to_string_lossy().into_owned())
+        }
+        Err(e) => {
+            notify(&app, "Could not save the session", &e);
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn discard_session(state: State<AppState>) {
+    if let Some(recorder) = state.recorder.lock().as_mut() {
+        recorder.discard_session();
+    }
 }
 
 #[tauri::command]

@@ -18,6 +18,12 @@ pub fn list(settings: &Settings) -> Vec<MediaItem> {
     let mut items = Vec::new();
     collect(&settings.clips_dir(), "clip", &["mp4", "mkv"], &mut items);
     collect(
+        &settings.sessions_dir(),
+        "session",
+        &["mkv", "mp4"],
+        &mut items,
+    );
+    collect(
         &settings.screenshots_dir(),
         "screenshot",
         &["png", "jpg", "jpeg"],
@@ -72,10 +78,14 @@ pub fn is_managed(settings: &Settings, path: &Path) -> bool {
     let Ok(canonical) = path.canonicalize() else {
         return false;
     };
-    [settings.clips_dir(), settings.screenshots_dir()]
-        .iter()
-        .filter_map(|d| d.canonicalize().ok())
-        .any(|d| canonical.starts_with(d))
+    [
+        settings.clips_dir(),
+        settings.screenshots_dir(),
+        settings.sessions_dir(),
+    ]
+    .iter()
+    .filter_map(|d| d.canonicalize().ok())
+    .any(|d| canonical.starts_with(d))
 }
 
 pub fn total_size(settings: &Settings) -> u64 {
@@ -87,5 +97,6 @@ pub fn managed_dirs(settings: &Settings) -> Vec<PathBuf> {
         settings.output_dir.clone(),
         settings.clips_dir(),
         settings.screenshots_dir(),
+        settings.sessions_dir(),
     ]
 }

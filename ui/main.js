@@ -100,6 +100,14 @@ function renderStatus(status) {
 
   $("btn-clip").disabled = !status.running;
 
+  const sessionButton = $("btn-session");
+  sessionButton.textContent = status.session_active ? "Stop and save" : "Start session";
+  sessionButton.classList.toggle("btn-primary", status.session_active);
+  sessionButton.disabled = !status.running;
+  $("session-summary").textContent = status.session_active
+    ? `Recording ${formatDuration(status.session_seconds)} · ${formatBytes(status.session_bytes)}`
+    : "Not recording a session.";
+
   const alerts = $("alerts");
   const messages = [];
   if (!status.ffmpeg_found) {
@@ -184,6 +192,28 @@ $("btn-toggle").addEventListener("click", async () => {
   pollStatus();
 });
 
+$("btn-session").addEventListener("click", async () => {
+  const button = $("btn-session");
+  const status = await invoke("get_status");
+  button.disabled = true;
+  try {
+    if (status.session_active) {
+      // Stitching hours of segments takes a moment; say so rather than
+      // looking frozen.
+      button.textContent = "Saving…";
+      await call("stop_session");
+      toast("Session saved");
+      refreshLibrary();
+    } else {
+      await call("start_session");
+      toast("Recording a session — press again to stop and save");
+    }
+  } finally {
+    button.disabled = false;
+    pollStatus();
+  }
+});
+
 $("btn-folder").addEventListener("click", () => call("open_output_folder"));
 
 $("btn-reprobe").addEventListener("click", async () => {
@@ -244,16 +274,15 @@ function renderLibrary() {
     card.className = "item";
 
     const src = convertFileSrc(item.path);
-    const thumb =
-      item.kind === "clip"
-        ? `<video class="thumb" src="${src}" preload="metadata" muted playsinline></video>`
-        : `<img class="thumb" src="${src}" alt="" loading="lazy" />`;
+    const isVideo = item.kind === "clip" || item.kind === "session";
+    const thumb = isVideo
+      ? `<video class="thumb" src="${src}" preload="metadata" muted playsinline></video>`
+      : `<img class="thumb" src="${src}" alt="" loading="lazy" />`;
 
     const when = new Date(item.modified_ms).toLocaleString();
-    const share =
-      item.kind === "clip"
-        ? `<button class="btn" data-act="youtube">To YouTube</button>`
-        : `<button class="btn" data-act="imgbb">Upload</button>`;
+    const share = isVideo
+      ? `<button class="btn" data-act="youtube">To YouTube</button>`
+      : `<button class="btn" data-act="imgbb">Upload</button>`;
 
     card.innerHTML = `
       ${thumb}
@@ -409,6 +438,7 @@ function applySettings(next) {
   $("hotkey_save_clip").value = next.hotkey_save_clip;
   $("hotkey_screenshot").value = next.hotkey_screenshot;
   $("hotkey_region").value = next.hotkey_region;
+  $("hotkey_session").value = next.hotkey_session;
   $("hotkey_toggle_buffer").value = next.hotkey_toggle_buffer;
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
@@ -451,6 +481,7 @@ function collectSettings() {
     hotkey_save_clip: $("hotkey_save_clip").value,
     hotkey_screenshot: $("hotkey_screenshot").value,
     hotkey_region: $("hotkey_region").value,
+    hotkey_session: $("hotkey_session").value,
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").value,
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,

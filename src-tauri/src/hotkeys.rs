@@ -10,6 +10,7 @@ enum Action {
     SaveClip,
     Screenshot,
     RegionShot,
+    ToggleSession,
     ToggleBuffer,
 }
 
@@ -23,6 +24,7 @@ pub fn register(app: &AppHandle, settings: &Settings) {
         (&settings.hotkey_save_clip, Action::SaveClip),
         (&settings.hotkey_screenshot, Action::Screenshot),
         (&settings.hotkey_region, Action::RegionShot),
+        (&settings.hotkey_session, Action::ToggleSession),
         (&settings.hotkey_toggle_buffer, Action::ToggleBuffer),
     ] {
         let combo = combo.trim();
@@ -114,6 +116,51 @@ fn run(app: &AppHandle, action: Action) {
                     notify(&app, "Region capture failed", &e);
                 }
             });
+        }
+        Action::ToggleSession => {
+            let active = state
+                .recorder
+                .lock()
+                .as_ref()
+                .map(|r| r.session_active())
+                .unwrap_or(false);
+
+            if active {
+                let saved = {
+                    let mut guard = state.recorder.lock();
+                    match guard.as_mut() {
+                        Some(r) => r.stop_session(),
+                        None => Err("No session is being recorded.".into()),
+                    }
+                };
+                match saved {
+                    Ok(path) => notify(
+                        app,
+                        "Session saved",
+                        &path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    ),
+                    Err(e) => notify(app, "Could not save the session", &e),
+                }
+            } else {
+                let started = {
+                    let mut guard = state.recorder.lock();
+                    match guard.as_mut() {
+                        Some(r) => r.start_session(),
+                        None => Err("Start the replay buffer first.".into()),
+                    }
+                };
+                match started {
+                    Ok(()) => notify(
+                        app,
+                        "Session recording started",
+                        "Everything from here is kept until you stop.",
+                    ),
+                    Err(e) => notify(app, "Could not start the session", &e),
+                }
+            }
         }
         Action::ToggleBuffer => {
             let running = state

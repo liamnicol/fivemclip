@@ -77,7 +77,11 @@ pub fn prune(settings: &Settings) -> PruneReport {
     }
 
     let mut files: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
-    for dir in [settings.clips_dir(), settings.screenshots_dir()] {
+    for dir in [
+        settings.clips_dir(),
+        settings.screenshots_dir(),
+        settings.sessions_dir(),
+    ] {
         collect(&dir, &mut files);
     }
 
