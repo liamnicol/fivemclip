@@ -66,6 +66,21 @@ pub fn path() -> Option<PathBuf> {
     LOG_PATH.get().cloned().flatten()
 }
 
+/// Spawn a named thread.
+///
+/// Every line in the log carries its thread name, and a log full of "unnamed"
+/// tells you nothing about which piece of work stalled. Naming them is the
+/// difference between reading a hang and guessing at one.
+pub fn thread(name: &str, body: impl FnOnce() + Send + 'static) {
+    let spawned = std::thread::Builder::new()
+        .name(name.to_string())
+        .spawn(body);
+    if let Err(e) = spawned {
+        // Out of threads is not something to paper over silently.
+        log(format!("could not start the {name} thread: {e}"));
+    }
+}
+
 /// Log entry and exit around something that might not come back.
 ///
 /// The value is in the asymmetry: a "begin" with no matching "end" is the

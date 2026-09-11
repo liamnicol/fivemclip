@@ -74,6 +74,15 @@ character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as
 input shows a readable label and carries the accelerator in `dataset.combo`;
 `collectSettings` reads the dataset, never the value.
 
+**Spawn threads through `diagnostics::thread`, not `std::thread::spawn`.** Every
+log line carries its thread name, and a log full of "unnamed" says nothing about
+which piece of work stalled.
+
+**Clip length lives on the recorder.** `save_clip()` takes no argument. It used
+to, and three callers - hotkey, button, tray item - each had to remember which
+settings field to read; the tray one was still passing `buffer_seconds` long
+after the other two were fixed.
+
 **A single-frame grab must not ask for a low frame rate.** ddagrab paces to the
 rate it is given, so 1 fps means waiting a full second with a Desktop
 Duplication open - which the game in front of it feels as a freeze.

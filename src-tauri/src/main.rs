@@ -190,13 +190,12 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             "open" => show_main_window(app),
             "clip" => {
                 let app = app.clone();
-                std::thread::spawn(move || {
+                diagnostics::thread("tray-clip", move || {
                     let state = app.state::<AppState>();
-                    let seconds = state.settings.lock().buffer_seconds;
                     let result = {
                         let mut guard = state.recorder.lock();
                         match guard.as_mut() {
-                            Some(r) => r.save_clip(seconds),
+                            Some(r) => r.save_clip(),
                             None => Err("The replay buffer is not running.".to_string()),
                         }
                     };
@@ -232,9 +231,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 // Exiting without a clean stop is safe now: ffmpeg is in a job
                 // object that the kernel tears down with this process.
                 let app = app.clone();
-                std::thread::spawn(move || {
+                diagnostics::thread("quit", move || {
                     let deadline = app.clone();
-                    std::thread::spawn(move || {
+                    diagnostics::thread("quit-deadline", move || {
                         std::thread::sleep(std::time::Duration::from_secs(20));
                         let _ = deadline;
                         std::process::exit(0);
@@ -290,7 +289,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// Keeps the replay buffer aligned with whether FiveM is actually up, so the
 /// app can sit in the tray permanently without burning GPU on the desktop.
 fn spawn_watchdog(app: tauri::AppHandle) {
-    std::thread::spawn(move || loop {
+    diagnostics::thread("watchdog", move || loop {
         std::thread::sleep(Duration::from_secs(4));
 
         let state = app.state::<AppState>();

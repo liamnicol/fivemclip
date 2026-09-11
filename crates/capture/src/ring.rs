@@ -514,13 +514,19 @@ impl Recorder {
         }
     }
 
-    /// Concatenate the newest `seconds` of buffer into an MP4.
-    pub fn save_clip(&mut self, seconds: u32) -> Result<PathBuf, String> {
+    /// Concatenate the newest `clip_seconds` of buffer into an MP4.
+    ///
+    /// The length is read from the recorder's own settings rather than passed
+    /// in. It used to be an argument, and three separate callers each had to
+    /// remember which field to read - the tray item was still passing
+    /// `buffer_seconds` long after the hotkey and the button were fixed, so
+    /// every clip saved from the tray was the entire buffer.
+    pub fn save_clip(&mut self) -> Result<PathBuf, String> {
         if !self.is_running() {
             return Err("The replay buffer is not running.".into());
         }
         let s = &self.settings;
-        let seconds = seconds.clamp(SEGMENT_SECONDS, s.buffer_seconds);
+        let seconds = s.clip_seconds.clamp(SEGMENT_SECONDS, s.buffer_seconds);
         let ring = s.ring_dir();
 
         let mut segments = newest_segments(&ring, seconds)?;

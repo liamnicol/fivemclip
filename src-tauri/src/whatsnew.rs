@@ -20,6 +20,13 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.4",
+        lines: &[
+            "Saving a clip from the tray menu respects your clip length. It was still writing the whole buffer - the hotkey and the button were fixed when the two settings were split apart, and this third way in was missed.",
+            "The log names its threads and times the screen grab behind a region capture, so a slow or flashing capture says which part was slow.",
+        ],
+    },
+    Release {
         version: "0.2.3",
         lines: &[
             "Send a clip or screenshot straight to Discord. Paste a webhook URL in Settings and pick the upload limit your server actually allows.",

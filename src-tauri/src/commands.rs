@@ -201,16 +201,15 @@ pub fn reprobe(state: State<AppState>) -> Result<ProbeReport, String> {
 /// and can take a moment, and doing it on the thread that draws the window
 /// froze the app while it worked.
 #[tauri::command]
-pub async fn save_clip(app: AppHandle, seconds: Option<u32>) -> Result<String, String> {
+pub async fn save_clip(app: AppHandle) -> Result<String, String> {
     let handle = app.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
-        let seconds = seconds.unwrap_or_else(|| state.settings.lock().clip_seconds);
         let mut guard = state.recorder.lock();
         let recorder = guard
             .as_mut()
             .ok_or_else(|| "The replay buffer has not been started yet.".to_string())?;
-        recorder.save_clip(seconds)
+        recorder.save_clip()
     })
     .await
     .map_err(|e| format!("saving was interrupted: {e}"))??;
@@ -301,7 +300,7 @@ pub fn start_region_capture(app: AppHandle) {
 /// All of it runs off the UI thread. Grabbing a frame means waiting on ffmpeg,
 /// and doing that on the thread that draws the window froze the whole app.
 pub fn begin_region_capture(app: AppHandle) {
-    std::thread::spawn(move || {
+    crate::diagnostics::thread("region-capture", move || {
         if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
             let _ = existing.show();
             let _ = existing.set_focus();
@@ -316,7 +315,12 @@ pub fn begin_region_capture(app: AppHandle) {
                 .cached_pipeline
                 .as_deref()
                 .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
-            shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
+            // Timed like the plain screenshot is. The overlay that follows was
+            // already measured and is ~5 ms, so if a region capture feels slow
+            // this is where it went.
+            crate::diagnostics::span("freezing the screen for the region overlay", || {
+                shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
+            })
         })();
 
         if let Err(e) = prepared {
@@ -670,7 +674,7 @@ pub fn open_editor(app: AppHandle, path: String) -> Result<(), String> {
         return Ok(());
     }
 
-    std::thread::spawn(move || {
+    crate::diagnostics::thread("editor-window", move || {
         let built = crate::diagnostics::span("building the editor window", || {
             tauri::WebviewWindowBuilder::new(
                 &app,
@@ -804,7 +808,7 @@ pub fn open_trimmer(app: AppHandle, path: String) -> Result<(), String> {
         return Ok(());
     }
 
-    std::thread::spawn(move || {
+    crate::diagnostics::thread("trim-window", move || {
         let built = crate::diagnostics::span("building the trim window", || {
             tauri::WebviewWindowBuilder::new(
                 &app,

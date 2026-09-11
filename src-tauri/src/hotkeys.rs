@@ -25,7 +25,7 @@ enum Action {
 pub fn register(app: &AppHandle, settings: &Settings) {
     let app = app.clone();
     let settings = settings.clone();
-    std::thread::spawn(move || {
+    crate::diagnostics::thread("hotkeys", move || {
         crate::diagnostics::span("registering hotkeys", || register_now(&app, &settings));
     });
 }
@@ -58,7 +58,7 @@ fn register_now(app: &AppHandle, settings: &Settings) {
             let app = app.clone();
             // Saving a clip shells out to ffmpeg. Doing that on the hotkey
             // thread would wedge every other shortcut until it finished.
-            std::thread::spawn(move || run(&app, action));
+            crate::diagnostics::thread("hotkey-action", move || run(&app, action));
         });
 
         match result {
@@ -79,11 +79,10 @@ fn run(app: &AppHandle, action: Action) {
     let state = app.state::<AppState>();
     match action {
         Action::SaveClip => {
-            let seconds = state.settings.lock().clip_seconds;
             let saved = {
                 let mut guard = state.recorder.lock();
                 match guard.as_mut() {
-                    Some(r) => r.save_clip(seconds),
+                    Some(r) => r.save_clip(),
                     None => Err("The replay buffer is not running.".into()),
                 }
             };

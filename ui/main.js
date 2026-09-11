@@ -170,7 +170,7 @@ $("btn-clip").addEventListener("click", async () => {
   const button = $("btn-clip");
   button.disabled = true;
   try {
-    await call("save_clip", { seconds: settings.clip_seconds });
+    await call("save_clip");
     toast("Clip saved");
     refreshLibrary();
   } finally {
