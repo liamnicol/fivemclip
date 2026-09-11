@@ -132,9 +132,14 @@ and that copy behaves like an installed one.
 All five are rebindable in Settings → Hotkeys: click a box, press the keys you
 want, then **Save settings**. `Esc` clears a binding.
 
-Function keys, letters, digits, numpad keys and combinations with
-`Ctrl`/`Shift`/`Alt` all work. If Windows refuses one because another program
-already holds it, you get a notification saying so when you save.
+Function keys, letters, digits, numpad keys, `Print Screen` and combinations
+with `Ctrl`/`Shift`/`Alt` all work. If Windows refuses one because another
+program already holds it, you get a notification saying so when you save.
+
+Print Screen is worth knowing about: Windows 11 gives that key to the Snipping
+Tool by default, so FiveMClip cannot have it until you turn that off in
+**Settings → Accessibility → Keyboard → "Use the Print screen key to open
+Snipping Tool"**. The app will tell you if that is what is in the way.
 
 ## Recording a whole session
 

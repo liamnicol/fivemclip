@@ -531,35 +531,53 @@ function setCombo(input, combo) {
   input.value = combo ? prettyCombo(combo) : "";
 }
 
+/** Keys Windows swallows on the way down, so the webview only ever sees the
+ *  key coming back up.
+ *
+ *  Print Screen is taken by the OS for the clipboard grab and, on Windows 11,
+ *  the Snipping Tool. No keydown ever reaches us, so a keydown-only capture
+ *  looked like the box was simply ignoring the key - which is exactly what it
+ *  was doing. */
+const KEYUP_ONLY = new Set(["PrintScreen"]);
+
+function captureCombo(input, event) {
+  event.preventDefault();
+
+  // A bare modifier is someone still reaching for the real key.
+  if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) return;
+
+  if (event.key === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    setCombo(input, "");
+    input.blur();
+    return;
+  }
+
+  if (!isBindable(event.code)) {
+    toast("That key cannot be used as a hotkey — try a function key or a letter", true);
+    return;
+  }
+
+  const parts = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.altKey) parts.push("Alt");
+  if (event.metaKey) parts.push("Super");
+  parts.push(event.code);
+
+  setCombo(input, parts.join("+"));
+  input.blur();
+}
+
 document.querySelectorAll(".hotkey").forEach((input) => {
   input.addEventListener("focus", () => input.classList.add("capturing"));
   input.addEventListener("blur", () => input.classList.remove("capturing"));
-  input.addEventListener("keydown", (event) => {
-    event.preventDefault();
 
-    // A bare modifier is someone still reaching for the real key.
-    if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) return;
-
-    if (event.key === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-      setCombo(input, "");
-      input.blur();
-      return;
-    }
-
-    if (!isBindable(event.code)) {
-      toast("That key cannot be used as a hotkey — try a function key or a letter", true);
-      return;
-    }
-
-    const parts = [];
-    if (event.ctrlKey) parts.push("Ctrl");
-    if (event.shiftKey) parts.push("Shift");
-    if (event.altKey) parts.push("Alt");
-    if (event.metaKey) parts.push("Super");
-    parts.push(event.code);
-
-    setCombo(input, parts.join("+"));
-    input.blur();
+  // Both, deliberately. A key that does arrive on the way down is captured
+  // there and the box blurs, so its keyup lands elsewhere and cannot capture
+  // twice; one that only arrives on the way up is caught below.
+  input.addEventListener("keydown", (event) => captureCombo(input, event));
+  input.addEventListener("keyup", (event) => {
+    if (KEYUP_ONLY.has(event.code)) captureCombo(input, event);
   });
 });
 

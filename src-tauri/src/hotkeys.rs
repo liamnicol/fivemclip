@@ -66,7 +66,7 @@ fn register_now(app: &AppHandle, settings: &Settings) {
                 notify(
                     app,
                     "Hotkey unavailable",
-                    &format!("{combo} could not be registered - another app may have it. ({e})"),
+                    &unavailable(combo, &e.to_string()),
                 );
             }
         }
@@ -211,6 +211,21 @@ fn upload_and_notify(app: &AppHandle, key: &str, path: std::path::PathBuf) {
     });
 }
 
+/// Why a binding did not take, in terms the user can act on.
+///
+/// Print Screen gets its own line because Windows 11 hands it to the Snipping
+/// Tool by default, and "another app may have it" sends people hunting through
+/// their running programs for something that is a Windows setting.
+fn unavailable(combo: &str, error: &str) -> String {
+    if combo.eq_ignore_ascii_case("printscreen") {
+        return "Windows is holding Print Screen for the Snipping Tool. Turn off \
+                Settings > Accessibility > Keyboard > \"Use the Print screen key to open \
+                Snipping Tool\", then save again."
+            .to_string();
+    }
+    format!("{combo} could not be registered - another app may have it. ({error})")
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -220,6 +235,27 @@ mod tests {
 
     fn parses(combo: &str) -> bool {
         Shortcut::from_str(combo).is_ok()
+    }
+
+    /// Print Screen is bindable at all - the front end offers it, so the parser
+    /// had better take it.
+    #[test]
+    fn print_screen_is_a_real_accelerator() {
+        assert!(parses("PrintScreen"));
+        assert!(parses("Ctrl+PrintScreen"));
+    }
+
+    #[test]
+    fn print_screen_failure_names_the_windows_setting() {
+        let message = super::unavailable("PrintScreen", "already registered");
+        assert!(message.contains("Snipping Tool"), "{message}");
+        assert!(!message.contains("another app"), "{message}");
+    }
+
+    #[test]
+    fn any_other_failure_keeps_the_general_advice() {
+        let message = super::unavailable("Ctrl+F9", "already registered");
+        assert!(message.contains("another app"), "{message}");
     }
 
     #[test]

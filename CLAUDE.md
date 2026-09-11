@@ -74,6 +74,11 @@ character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as
 input shows a readable label and carries the accelerator in `dataset.combo`;
 `collectSettings` reads the dataset, never the value.
 
+**Print Screen only ever arrives as a `keyup`.** Windows takes the keydown for
+the clipboard grab and the Snipping Tool, so a keydown-only capture silently
+ignores the key. The hotkey boxes listen on both; `KEYUP_ONLY` in `ui/main.js`
+names the keys that need it.
+
 **Registering hotkeys must not happen on the main thread.** The plugin posts to
 the main thread and blocks on the reply, so calling it from there waits on a
 task that cannot run until the wait ends - the same trap as building a window.

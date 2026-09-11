@@ -20,6 +20,13 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.1.8",
+        lines: &[
+            "Print Screen can be used as a hotkey. Windows swallows that key on the way down, so the settings box never saw it being pressed at all.",
+            "If Windows is holding Print Screen for the Snipping Tool, the app now says so and points at the setting instead of blaming another program.",
+        ],
+    },
+    Release {
         version: "0.1.7",
         lines: &[
             "Rebinding a hotkey works. Numpad keys, Space and anything with Shift were saved in a form the app could not register, so those bindings silently never fired - function keys and plain letters were fine, which is what made it look like it worked.",
