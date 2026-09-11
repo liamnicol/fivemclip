@@ -20,14 +20,19 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.1.7",
+        lines: &[
+            "Rebinding a hotkey works. Numpad keys, Space and anything with Shift were saved in a form the app could not register, so those bindings silently never fired - function keys and plain letters were fine, which is what made it look like it worked.",
+            "Sessions save as MP4 instead of MKV, so Windows will preview them and anywhere you upload them will take them. Sessions you already have keep working.",
+            "Library cards say whether they are a clip, a session or a screenshot - three recordings of the same scene were three identical thumbnails.",
+        ],
+    },
+    Release {
         version: "0.1.6",
         lines: &[
             "Clips and sessions can be trimmed: Trim in the Library, drag the two handles, save.",
             "Save re-encodes so the part you cut is genuinely gone. Fast trim is instant but leaves up to two seconds of it inside the file - use it for tidying a highlight, not for cutting something out.",
             "The Library refreshes itself after an edit or a trim instead of showing the old thumbnail until you press Refresh.",
-            "Sessions save as MP4 instead of MKV, so Windows will preview them and anywhere you upload them will take them. Sessions you already have keep working.",
-            "Library cards say whether they are a clip, a session or a screenshot - three recordings of the same scene were three identical thumbnails.",
-            "Rebinding a hotkey works. Numpad keys, Space and anything with Shift were being saved in a form the app could not register, so those bindings silently never fired.",
         ],
     },
     Release {
