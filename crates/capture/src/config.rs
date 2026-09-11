@@ -19,6 +19,13 @@ pub struct Settings {
     pub output_dir: PathBuf,
     /// Seconds of gameplay kept in the replay buffer.
     pub buffer_seconds: u32,
+    /// How much of that buffer a saved clip actually contains.
+    ///
+    /// Separate from `buffer_seconds` on purpose. Saving the whole buffer means
+    /// a long buffer - which people set so they never miss anything - produces a
+    /// multi-gigabyte file on every single press, so being careful about missing
+    /// a moment used to cost you the disk.
+    pub clip_seconds: u32,
     pub fps: u32,
     /// Video bitrate in kbit/s.
     pub bitrate_kbps: u32,
@@ -106,6 +113,7 @@ impl Default for Settings {
         Self {
             output_dir: default_output_dir(),
             buffer_seconds: 120,
+            clip_seconds: 60,
             fps: 60,
             bitrate_kbps: 30_000,
             monitor_index: 0,
@@ -178,6 +186,9 @@ impl Settings {
 
     pub fn clamp(&mut self) {
         self.buffer_seconds = self.buffer_seconds.clamp(10, 1800);
+        // Never longer than there is buffer to take it from, and never shorter
+        // than one segment - below that there is nothing to concatenate.
+        self.clip_seconds = self.clip_seconds.clamp(5, self.buffer_seconds);
         self.fps = self.fps.clamp(15, 240);
         self.bitrate_kbps = self.bitrate_kbps.clamp(2_000, 150_000);
         self.mic_gain_db = self.mic_gain_db.clamp(-30.0, 30.0);
@@ -396,5 +407,42 @@ mod portable_tests {
     fn settings_fall_back_to_the_config_directory() {
         let config = PathBuf::from("/tmp/config");
         assert_eq!(settings_path(&config), config.join("settings.json"));
+    }
+}
+
+#[cfg(test)]
+mod clip_length_tests {
+    use super::*;
+
+    /// A clip used to be the whole buffer, so a 20 minute buffer meant a 20
+    /// minute file on every press. The two lengths are independent now.
+    #[test]
+    fn a_long_buffer_does_not_force_a_long_clip() {
+        let mut s = Settings {
+            buffer_seconds: 1200,
+            clip_seconds: 60,
+            ..Default::default()
+        };
+        s.clamp();
+        assert_eq!(s.buffer_seconds, 1200);
+        assert_eq!(s.clip_seconds, 60);
+    }
+
+    #[test]
+    fn a_clip_cannot_outrun_its_buffer() {
+        let mut s = Settings {
+            buffer_seconds: 30,
+            clip_seconds: 600,
+            ..Default::default()
+        };
+        s.clamp();
+        assert_eq!(s.clip_seconds, 30);
+    }
+
+    #[test]
+    fn the_default_clip_is_a_minute_not_the_whole_buffer() {
+        let s = Settings::default();
+        assert_eq!(s.clip_seconds, 60);
+        assert!(s.clip_seconds < s.buffer_seconds);
     }
 }

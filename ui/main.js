@@ -95,7 +95,7 @@ function renderStatus(status) {
   $("buffer-summary").textContent = status.running
     ? `Holding the last ${formatDuration(target)} · about ${formatBytes(status.estimated_buffer_bytes)} on disk`
     : "Not recording.";
-  $("btn-toggle").textContent = status.running ? "Stop buffer" : "Start buffer";
+  $("btn-toggle-label").textContent = status.running ? "Stop buffer" : "Start buffer";
   $("pipeline-name").textContent = status.pipeline + (status.has_audio ? "" : " · no audio");
   $("disk-summary").textContent = `${formatBytes(status.library_bytes)} of clips and screenshots`;
   const freeLabel = $("disk-free");
@@ -109,7 +109,7 @@ function renderStatus(status) {
   $("btn-clip").disabled = !status.running;
 
   const sessionButton = $("btn-session");
-  sessionButton.textContent = status.session_active ? "Stop and save" : "Start session";
+  $("btn-session-label").textContent = status.session_active ? "Stop and save" : "Start session";
   sessionButton.classList.toggle("btn-primary", status.session_active);
   // Stopping stays available whatever the buffer is doing: if recording
   // halted for low disk or ffmpeg died, the session is still on disk and
@@ -168,7 +168,7 @@ $("btn-clip").addEventListener("click", async () => {
   const button = $("btn-clip");
   button.disabled = true;
   try {
-    await call("save_clip", { seconds: settings.buffer_seconds });
+    await call("save_clip", { seconds: settings.clip_seconds });
     toast("Clip saved");
     refreshLibrary();
   } finally {
@@ -212,7 +212,7 @@ $("btn-session").addEventListener("click", async () => {
     if (status.session_active) {
       // Stitching hours of segments takes a moment; say so rather than
       // looking frozen.
-      button.textContent = "Saving…";
+      $("btn-session-label").textContent = "Saving…";
       await call("stop_session");
       toast("Session saved");
       refreshLibrary();
@@ -345,6 +345,7 @@ function renderLibrary() {
       </div>
       <div class="actions">
         <button class="btn" data-act="open">Open</button>
+        <button class="btn" data-act="reveal" title="Show this file in Explorer">Folder</button>
         ${share}
         <button class="btn btn-danger" data-act="delete">Delete</button>
       </div>`;
@@ -369,6 +370,9 @@ async function handleItemAction(action, item, button) {
   switch (action) {
     case "open":
       await call("open_item", { path: item.path });
+      break;
+    case "reveal":
+      await call("reveal_item", { path: item.path });
       break;
     case "edit":
       await call("open_editor", { path: item.path });
@@ -429,6 +433,20 @@ function bindRange(id, outputId, format) {
 }
 
 const updateBufferLabel = bindRange("buffer_seconds", "buffer_seconds_out", formatDuration);
+const updateClipLabel = bindRange("clip_seconds", "clip_seconds_out", formatDuration);
+
+/** A clip cannot be longer than the buffer it comes out of. The backend clamps
+ *  it anyway, but a slider that lets you pick an impossible number and then
+ *  quietly changes it is worse than one that does not offer it. */
+function capClipToBuffer() {
+  const buffer = Number($("buffer_seconds").value);
+  const clip = $("clip_seconds");
+  clip.max = String(buffer);
+  if (Number(clip.value) > buffer) clip.value = String(buffer);
+  updateClipLabel();
+}
+
+$("buffer_seconds").addEventListener("input", capClipToBuffer);
 const updateBitrateLabel = bindRange("bitrate_kbps", "bitrate_out", (v) => `${(v / 1000).toFixed(0)} Mbps`);
 const updateMicLabel = bindRange("mic_gain_db", "mic_gain_out", (v) => `${v > 0 ? "+" : ""}${v} dB`);
 const updateMinFreeLabel = bindRange("min_free_gb", "min_free_out", (v) => `${v} GB`);
@@ -605,6 +623,7 @@ document.querySelectorAll("[data-external]").forEach((link) => {
 function applySettings(next) {
   settings = next;
   $("buffer_seconds").value = next.buffer_seconds;
+  $("clip_seconds").value = next.clip_seconds;
   $("fps").value = String(next.fps);
   $("bitrate_kbps").value = next.bitrate_kbps;
   $("capture_cursor").checked = next.capture_cursor;
@@ -633,6 +652,7 @@ function applySettings(next) {
   $("output_dir").value = next.output_dir;
 
   updateBufferLabel();
+  capClipToBuffer();
   updateBitrateLabel();
   updateMicLabel();
   updateSystemLabel();
@@ -644,6 +664,8 @@ function applySettings(next) {
   $("hint-clip").textContent = prettyCombo(next.hotkey_save_clip) || "no hotkey";
   $("hint-shot").textContent = prettyCombo(next.hotkey_screenshot) || "no hotkey";
   $("hint-region").textContent = prettyCombo(next.hotkey_region) || "no hotkey";
+  $("hint-session").textContent = prettyCombo(next.hotkey_session) || "no hotkey";
+  $("hint-toggle").textContent = prettyCombo(next.hotkey_toggle_buffer) || "no hotkey";
 }
 
 /* ---------------- trigger apps ---------------- */
@@ -699,6 +721,7 @@ function collectSettings() {
   return {
     ...settings,
     buffer_seconds: Number($("buffer_seconds").value),
+    clip_seconds: Number($("clip_seconds").value),
     fps: Number($("fps").value),
     bitrate_kbps: Number($("bitrate_kbps").value),
     monitor_index: Number($("monitor_index").value || 0),

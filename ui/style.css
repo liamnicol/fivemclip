@@ -162,6 +162,13 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 .btn-ghost { background: transparent; }
 .btn-lg { flex-direction: column; gap: 2px; padding: 18px; font-size: 15px; font-weight: 600; }
 .btn-lg small { font-weight: 400; font-size: 12px; opacity: .75; }
+
+/* The card buttons put their key beside the label rather than under it - the
+   cards are short and a second line would stretch them all. */
+.card .btn small {
+  font-weight: 400; font-size: 12px; opacity: .6; margin-left: 6px;
+}
+.card .btn small:empty { display: none; }
 .btn-danger:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-dim); }
 
 /* ---------- alerts ---------- */

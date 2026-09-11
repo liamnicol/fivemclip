@@ -42,7 +42,8 @@ your case.
 
 - **Replay buffer.** Recording runs continuously in the background. Press the
   hotkey and the last N seconds are written out — no re-encoding, so it lands in
-  about a second even at the 20 minute maximum.
+  about a second. How much it remembers and how much a clip keeps are separate
+  settings, so a 20 minute buffer does not mean a 20 minute file every time.
 - **Session recording** for a whole night, started and stopped on its own
   hotkey and kept apart from your clips.
 - **Screenshots** on a separate hotkey, full screen or a rectangle you drag.

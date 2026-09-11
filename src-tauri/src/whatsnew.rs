@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.1.9",
+        lines: &[
+            "Clip length is its own setting. A clip used to be the whole buffer, so a 20 minute buffer wrote a 20 minute file every single time you pressed the key. Keep a long buffer and a short clip.",
+            "Library cards have a Folder button that shows the file in Explorer.",
+            "The Record tab shows all five hotkeys, including the session and buffer ones it had been leaving out.",
+        ],
+    },
+    Release {
         version: "0.1.8",
         lines: &[
             "Print Screen can be used as a hotkey. Windows swallows that key on the way down, so the settings box never saw it being pressed at all.",

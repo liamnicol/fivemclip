@@ -77,7 +77,7 @@ fn run(app: &AppHandle, action: Action) {
     let state = app.state::<AppState>();
     match action {
         Action::SaveClip => {
-            let seconds = state.settings.lock().buffer_seconds;
+            let seconds = state.settings.lock().clip_seconds;
             let saved = {
                 let mut guard = state.recorder.lock();
                 match guard.as_mut() {

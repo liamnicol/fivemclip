@@ -5,35 +5,20 @@ the order things would happen in if nothing changes.
 
 ## Next (0.1.x)
 
-Small, and all of it decided.
-
-### Clip length, separate from buffer length
-
-**A defect, not a feature.** `F9` and the Save clip button both pass
-`buffer_seconds`, so every clip is the entire buffer. The buffer maximum went to
-20 minutes on community request, which at the default 30 Mbps means every press
-writes a ~4.5 GB file. Setting a long buffer to be safe currently punishes you
-on every clip and then fills the disk cap.
-
-`save_clip` already takes `Option<u32>`; only the caller is wrong. Add
-`clip_seconds` (default 60), clamped to the buffer length, and let the buffer be
-as long as someone likes.
-
-### Show in folder
-
-`reveal_item` is a registered command with no button anywhere. Library cards
-should have one.
-
-### All five hotkeys on the Record tab
-
-Save clip, Screenshot and Region show their key. Session and Toggle buffer do
-not, which is part of why rebinding reads as missing.
-
 ### Rename a clip in the Library
 
 Filenames are timestamps. For a community that shares clips, "PD chase" beats
-`Clip_2026-09-11_00-08-35.mp4`. The only one here with real surface area: the
-link index is keyed by file name, and the asset scope needs updating on rename.
+`Clip_2026-09-11_00-08-35.mp4`. The link index is keyed by file name and the
+asset scope needs updating on rename, so it is not quite the one-liner the other
+three were.
+
+### Done
+
+- **Clip length, separate from buffer length** (0.1.9). Was a defect: every clip
+  was the whole buffer, so a 20 minute buffer meant a ~4.5 GB file per press.
+- **Show in folder** (0.1.9). `reveal_item` had been a registered command with
+  no button.
+- **All five hotkeys on the Record tab** (0.1.9).
 
 ## 2.0
 

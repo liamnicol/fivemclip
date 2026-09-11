@@ -204,7 +204,7 @@ pub async fn save_clip(app: AppHandle, seconds: Option<u32>) -> Result<String, S
     let handle = app.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
-        let seconds = seconds.unwrap_or_else(|| state.settings.lock().buffer_seconds);
+        let seconds = seconds.unwrap_or_else(|| state.settings.lock().clip_seconds);
         let mut guard = state.recorder.lock();
         let recorder = guard
             .as_mut()
