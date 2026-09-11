@@ -20,6 +20,12 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.5",
+        lines: &[
+            "Settings apply as you change them. The Save settings button is gone, and so is changing something, walking away and finding it never took.",
+        ],
+    },
+    Release {
         version: "0.2.4",
         lines: &[
             "Saving a clip from the tray menu respects your clip length. It was still writing the whole buffer - the hotkey and the button were fixed when the two settings were split apart, and this third way in was missed.",

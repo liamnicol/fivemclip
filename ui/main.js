@@ -605,6 +605,7 @@ function captureCombo(input, event) {
   if (event.key === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     setCombo(input, "");
     input.blur();
+    scheduleSave();
     return;
   }
 
@@ -622,6 +623,8 @@ function captureCombo(input, event) {
 
   setCombo(input, parts.join("+"));
   input.blur();
+  // setCombo writes the value programmatically, which fires nothing.
+  scheduleSave();
 }
 
 document.querySelectorAll(".hotkey").forEach((input) => {
@@ -803,14 +806,47 @@ async function persistSettings({ silent = false } = {}) {
   if (!silent) {
     const badge = $("settings-saved");
     badge.hidden = false;
-    setTimeout(() => (badge.hidden = true), 2000);
+    clearTimeout(savedBadgeTimer);
+    savedBadgeTimer = setTimeout(() => (badge.hidden = true), 1600);
   }
 }
 
-$("settings-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await persistSettings();
-});
+let savedBadgeTimer;
+let saveTimer;
+
+/** Settings apply as they are changed rather than on a button.
+ *
+ *  Debounced, and not optionally: a range fires `input` for every pixel it is
+ *  dragged, and several of these fields restart the recorder when they change.
+ *  Saving per pixel would rebuild the capture pipeline dozens of times during
+ *  one drag of the bitrate slider.
+ *
+ *  Long enough to coalesce a drag or a typed-out API key, short enough that
+ *  someone who changes one thing and immediately alt-tabs still gets it. */
+const SAVE_DEBOUNCE_MS = 600;
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await persistSettings();
+    } catch {
+      // The backend refused - changing the output folder mid-session, say. It
+      // has already toasted why; put the controls back to what is actually
+      // stored rather than leaving a value that was never accepted on screen.
+      applySettings(await invoke("get_settings").catch(() => settings));
+    }
+  }, SAVE_DEBOUNCE_MS);
+}
+
+// One listener for the whole form. `input` covers typing and dragging, `change`
+// covers the controls that only report on commit.
+for (const event of ["input", "change"]) {
+  $("settings-form").addEventListener(event, scheduleSave);
+}
+
+// Enter in a text field would otherwise reload the page.
+$("settings-form").addEventListener("submit", (event) => event.preventDefault());
 
 /* ---------------- first run ---------------- */
 

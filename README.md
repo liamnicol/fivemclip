@@ -139,8 +139,9 @@ and that copy behaves like an installed one.
 | Start / stop a session | `F8` |
 | Toggle the buffer | `Ctrl+F9` |
 
-All five are rebindable in Settings → Hotkeys: click a box, press the keys you
-want, then **Save settings**. `Esc` clears a binding.
+All six are rebindable in Settings → Hotkeys: click a box and press the keys you
+want. `Esc` clears a binding. Settings apply as you change them; there is no
+save button.
 
 Function keys, letters, digits, numpad keys, `Print Screen` and combinations
 with `Ctrl`/`Shift`/`Alt` all work. If Windows refuses one because another
