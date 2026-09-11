@@ -12,6 +12,16 @@ use std::process::Stdio;
 use crate::config::Settings;
 use crate::ffmpeg::{self, Pipeline, PIPELINES};
 
+/// Frame rate asked of the capture source for a single-frame grab.
+///
+/// It used to be 1, on the reasoning that producing sixty frames to keep one is
+/// waste. That had it exactly backwards: ddagrab *paces* to the rate it is
+/// given, so at 1 fps the first frame is up to a second away and ffmpeg holds a
+/// Desktop Duplication open across the whole wait - which the game in front of
+/// it feels as a freeze. At 60 the first frame arrives in about sixteen
+/// milliseconds.
+pub const GRAB_FPS: u32 = 60;
+
 /// Where the next screenshot should be written, named by the clock.
 pub fn next_screenshot_path(s: &Settings) -> Result<PathBuf, String> {
     let dir = s.screenshots_dir();
@@ -144,10 +154,8 @@ fn try_capture(
     pipeline: &Pipeline,
     out: &std::path::Path,
 ) -> Result<(), String> {
-    // Grab at 1 fps: we only want one frame and there is no reason to make the
-    // duplication API produce sixty of them first.
     let input_settings = Settings {
-        fps: 1,
+        fps: GRAB_FPS,
         ..s.clone()
     };
 
@@ -204,5 +212,42 @@ fn try_capture(
             .unwrap_or("screen capture failed")
             .trim()
             .to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pins the fix for a screenshot freezing the game for about a second.
+    ///
+    /// A low grab rate makes ddagrab wait out the frame interval with a Desktop
+    /// Duplication open, which the game in front of it feels. Anything down
+    /// near 1 fps brings the freeze straight back.
+    #[test]
+    fn the_grab_rate_is_high_enough_not_to_stall_the_game() {
+        assert!(
+            GRAB_FPS >= 30,
+            "a {GRAB_FPS} fps grab waits {} ms for its first frame",
+            1000 / GRAB_FPS.max(1)
+        );
+    }
+
+    /// The grab rate is the screenshot's alone; it must not follow whatever the
+    /// recorder happens to be set to, or someone recording at 15 fps gets a
+    /// slower screenshot than someone recording at 120.
+    #[test]
+    fn the_grab_rate_ignores_the_recording_frame_rate() {
+        for recording_at in [15, 30, 60, 120, 240] {
+            let s = Settings {
+                fps: recording_at,
+                ..Default::default()
+            };
+            let asked = Settings {
+                fps: GRAB_FPS,
+                ..s.clone()
+            };
+            assert_eq!(asked.fps, GRAB_FPS);
+        }
     }
 }

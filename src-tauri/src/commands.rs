@@ -249,7 +249,12 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
         (ffmpeg, settings, pipeline)
     };
 
-    let path = shot::capture(&ffmpeg, &settings, pipeline)?;
+    // Timed because this is the one operation whose cost the user feels in the
+    // game rather than in the app: it opens a second Desktop Duplication while
+    // something is already presenting fullscreen.
+    let path = crate::diagnostics::span("grabbing a screenshot", || {
+        shot::capture(&ffmpeg, &settings, pipeline)
+    })?;
     let path_string = path.to_string_lossy().into_owned();
 
     if settings.imgbb_auto_upload && !settings.imgbb_api_key.trim().is_empty() {

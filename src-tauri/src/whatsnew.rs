@@ -20,6 +20,13 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.1",
+        lines: &[
+            "Taking a screenshot no longer freezes the game for about a second. It was asking the capture source for one frame per second, so it sat waiting out the whole interval before it got one.",
+            "How long a grab took is now in the log, so if your machine still hitches there is a number rather than a guess.",
+        ],
+    },
+    Release {
         version: "0.2.0",
         lines: &[
             "Mark a moment while you record. Press F7 during a session and the Library and the trimmer both remember where it was.",

@@ -110,7 +110,10 @@ fn run(app: &AppHandle, action: Action) {
                 .as_deref()
                 .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
 
-            match fivemclip_capture::shot::capture(&ffmpeg, &settings, pipeline) {
+            let shot = crate::diagnostics::span("grabbing a screenshot", || {
+                fivemclip_capture::shot::capture(&ffmpeg, &settings, pipeline)
+            });
+            match shot {
                 Ok(path) => {
                     if settings.imgbb_auto_upload && !settings.imgbb_api_key.trim().is_empty() {
                         upload_and_notify(app, &settings.imgbb_api_key, path);
