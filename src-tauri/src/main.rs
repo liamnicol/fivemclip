@@ -96,6 +96,8 @@ fn main() {
             commands::open_log_folder,
             commands::upload_imgbb,
             commands::youtube_handoff,
+            commands::send_to_discord,
+            commands::discord_limit_bytes,
             commands::copy_text,
             commands::open_url,
             updates::check_for_update,

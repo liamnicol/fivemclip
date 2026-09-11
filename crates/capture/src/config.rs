@@ -105,6 +105,20 @@ pub struct Settings {
     /// Auto-upload every screenshot and put the link on the clipboard.
     pub imgbb_auto_upload: bool,
 
+    /// Discord incoming webhook. Posts to exactly one channel, needs no bot and
+    /// no account - which is the only shape of Discord integration that fits an
+    /// app with no server behind it.
+    ///
+    /// A secret in the same way the ImgBB key is: anyone holding it can post to
+    /// that channel.
+    pub discord_webhook: String,
+    /// The upload size limit of the server being posted to, in megabytes.
+    ///
+    /// A setting rather than a constant on purpose. Discord has changed this
+    /// more than once and it varies by Nitro tier and server boost level, so a
+    /// number baked in here would be wrong for somebody on the day it shipped.
+    pub discord_limit_mb: u32,
+
     /// Last version whose "what's new" notes the user has seen. Empty on a
     /// fresh install, which is why the splash is gated on `setup_complete`
     /// too - nobody wants a changelog for software they installed a minute ago.
@@ -149,6 +163,11 @@ impl Default for Settings {
             hotkey_marker: "F7".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
+            discord_webhook: String::new(),
+            // The most conservative of Discord's tiers: too small is a clip
+            // that gets refused, too large is one that uploads and is rejected
+            // after the wait.
+            discord_limit_mb: 10,
             last_seen_version: String::new(),
             cached_pipeline: None,
             cached_pipeline_fingerprint: None,
@@ -211,6 +230,7 @@ impl Settings {
         // A floor below a couple of gigabytes is not a floor: Windows itself
         // starts misbehaving long before a disk is genuinely full.
         self.min_free_gb = self.min_free_gb.clamp(2, 500);
+        self.discord_limit_mb = self.discord_limit_mb.clamp(1, 500);
         self.max_library_gb = self.max_library_gb.clamp(1, 10_000);
         self.system_gain_db = self.system_gain_db.clamp(-30.0, 30.0);
         if self.output_dir.as_os_str().is_empty() {

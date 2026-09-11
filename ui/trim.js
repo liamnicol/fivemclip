@@ -21,6 +21,22 @@ let previewing = false;
 /** Below this there is nothing left to watch. Matches trim::MIN_SECONDS. */
 const MIN_SECONDS = 0.25;
 
+/** Matches trim::AUDIO_KBPS and trim::MIN_USEFUL_KBPS. Audio is a rounding
+ *  error next to video until a size limit forces the bitrate down, at which
+ *  point it stops being one. */
+const AUDIO_KBPS = 160;
+const MIN_USEFUL_KBPS = 1500;
+
+/** Discord's upload limit for this user, in bytes. Zero until it is read. */
+let discordLimit = 0;
+
+/** The video bitrate that fits the current selection under the limit.
+ *  Mirrors trim::bitrate_to_fit, including the 5% it leaves for the muxer. */
+function fitKbps(seconds) {
+  if (seconds <= 0) return 0;
+  return Math.max(0, (discordLimit * 0.95 * 8) / seconds / 1000 - AUDIO_KBPS);
+}
+
 /* ---------------- formatting ---------------- */
 
 function clock(seconds) {
@@ -61,6 +77,8 @@ function paint() {
   $("selected").textContent = precise(end - start);
   $("range").textContent = `of ${precise(duration)} — ${clock(start)} to ${clock(end)}`;
 
+  paintFit();
+
   const whole = start <= 0 && end >= duration;
   $("reset").disabled = whole;
   // Saving the whole thing over itself is work that changes nothing.
@@ -77,6 +95,42 @@ function setStart(t) {
 function setEnd(t) {
   end = clamp(t, Math.min(duration, start + MIN_SECONDS), duration);
   paint();
+}
+
+/** Say how the selection would land against the Discord limit.
+ *
+ *  Framed as quality at a computed bitrate rather than "the longest trim that
+ *  fits", because at the bitrate this records, what fits is about seven seconds
+ *  - a useless thing to tell someone. Keeping the clip and lowering the bitrate
+ *  is the answer; this says how much that will cost. */
+function paintFit() {
+  const pill = $("fit-pill");
+  const button = $("discord");
+  if (!discordLimit) {
+    pill.hidden = true;
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  pill.hidden = false;
+
+  const kbps = fitKbps(end - start);
+  const mb = (discordLimit / 1e6).toFixed(0);
+  if (kbps < MIN_USEFUL_KBPS) {
+    pill.className = "pill bad";
+    pill.textContent = `Too long for ${mb} MB — send it to YouTube instead`;
+    button.disabled = true;
+    return;
+  }
+  button.disabled = false;
+  const mbps = (kbps / 1000).toFixed(1);
+  if (kbps >= 6000) {
+    pill.className = "pill good";
+    pill.textContent = `Fits ${mb} MB at ${mbps} Mbps`;
+  } else {
+    pill.className = "pill ok";
+    pill.textContent = `Fits ${mb} MB at ${mbps} Mbps — soft`;
+  }
 }
 
 /** Draw the marks once, on load. They do not move, only the scale does, and
@@ -230,15 +284,26 @@ window.addEventListener("keydown", (event) => {
 
 /* ---------------- saving ---------------- */
 
-async function save(replace, fast = false) {
+async function save(replace, fast = false, fitDiscord = false, thenSend = false) {
   const buttons = document.querySelectorAll(".bar .btn");
-  const pressed = fast ? $("fast") : replace ? $("save") : $("save-copy");
+  const pressed = fitDiscord ? $("discord") : fast ? $("fast") : replace ? $("save") : $("save-copy");
   const label = pressed.textContent;
   buttons.forEach((b) => (b.disabled = true));
   pressed.textContent = "Trimming…";
   video.pause();
   try {
-    await invoke("trim_clip", { path: sourcePath, start, end, replace, fast });
+    const saved = await invoke("trim_clip", {
+      path: sourcePath,
+      start,
+      end,
+      replace,
+      fast,
+      fitDiscord,
+    });
+    if (thenSend) {
+      pressed.textContent = "Sending…";
+      await invoke("send_to_discord", { path: saved, message: "" });
+    }
     getCurrentWindow().close();
   } catch (error) {
     alert(String(error));
@@ -253,6 +318,9 @@ $("save-copy").addEventListener("click", () => save(false));
 // Replaces, like Save: someone reaching for the fast path on a three hour
 // session is not looking to end up with two copies of it.
 $("fast").addEventListener("click", () => save(true, true));
+// A copy, not a replace: the whole point is a smaller version for Discord, and
+// overwriting the good one with a squeezed one is not what anybody meant.
+$("discord").addEventListener("click", () => save(false, false, true, true));
 
 /* ---------------- boot ---------------- */
 
@@ -294,6 +362,13 @@ function load(path) {
   // is not, and a stale cached copy would show the untrimmed original.
   video.src = `${convertFileSrc(path)}?v=${Date.now()}`;
 }
+
+invoke("discord_limit_bytes")
+  .then((bytes) => {
+    discordLimit = bytes ?? 0;
+    paintFit();
+  })
+  .catch(() => {});
 
 listen("trim:open", (event) => load(event.payload));
 

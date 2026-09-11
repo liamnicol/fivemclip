@@ -333,15 +333,24 @@ function renderLibrary() {
       : "";
     // An already-uploaded screenshot keeps its link instead of offering the
     // upload again - a second upload would just orphan the first one on ImgBB.
+    // Offered on anything small enough to go as-is. A clip too big for the
+    // limit is sent from the trimmer instead, which can shrink it to fit.
+    const discord =
+      settings?.discord_webhook && item.size_bytes <= (settings.discord_limit_mb ?? 0) * 1e6
+        ? `<button class="btn" data-act="discord">To Discord</button>`
+        : "";
+
     const share = isVideo
       ? `<button class="btn" data-act="trim">Trim</button>
+         ${discord}
          <button class="btn" data-act="youtube">To YouTube</button>`
       : `<button class="btn" data-act="edit">Edit</button>
          ${
            item.link
              ? `<button class="btn" data-act="copy-link">Copy link</button>`
              : `<button class="btn" data-act="imgbb">Upload</button>`
-         }`;
+         }
+         ${discord}`;
 
     const link = item.link
       ? `<span class="link" title="${escapeHtml(item.link.url)}">${escapeHtml(item.link.url)}</span>`
@@ -406,6 +415,18 @@ async function handleItemAction(action, item, button) {
       } finally {
         button.disabled = false;
         button.textContent = "Upload";
+      }
+      break;
+    }
+    case "discord": {
+      button.disabled = true;
+      button.textContent = "Sending…";
+      try {
+        await call("send_to_discord", { path: item.path, message: "" });
+        toast("Sent to Discord");
+      } finally {
+        button.disabled = false;
+        button.textContent = "To Discord";
       }
       break;
     }
@@ -540,8 +561,13 @@ function isBindable(code) {
   );
 }
 
-/** How a stored combo is shown. "Ctrl+KeyS" reads as Ctrl+S. */
+/** How a stored combo is shown. "Ctrl+KeyS" reads as Ctrl+S.
+ *
+ *  Tolerates a missing value. Every hotkey field has a serde default so this
+ *  should not happen - but one absent field throwing here takes the whole
+ *  settings page down with it, and a blank box is a far better failure. */
 function prettyCombo(combo) {
+  if (typeof combo !== "string" || combo === "") return "";
   return combo
     .split("+")
     .map((part) => {
@@ -556,8 +582,9 @@ function prettyCombo(combo) {
 /** The input shows a readable label; the accelerator rides along on the
  *  element, because it is the accelerator that has to be saved. */
 function setCombo(input, combo) {
-  input.dataset.combo = combo;
-  input.value = combo ? prettyCombo(combo) : "";
+  const value = typeof combo === "string" ? combo : "";
+  input.dataset.combo = value;
+  input.value = prettyCombo(value);
 }
 
 /** Keys Windows swallows on the way down, so the webview only ever sees the
@@ -652,6 +679,8 @@ function applySettings(next) {
   setCombo($("hotkey_toggle_buffer"), next.hotkey_toggle_buffer);
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
+  $("discord_webhook").value = next.discord_webhook;
+  $("discord_limit_mb").value = String(next.discord_limit_mb);
   $("min_free_gb").value = next.min_free_gb;
   $("auto_prune").checked = next.auto_prune;
   $("max_library_gb").value = next.max_library_gb;
@@ -755,6 +784,8 @@ function collectSettings() {
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").dataset.combo ?? "",
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
+    discord_webhook: $("discord_webhook").value.trim(),
+    discord_limit_mb: Number($("discord_limit_mb").value),
     min_free_gb: Number($("min_free_gb").value),
     auto_prune: $("auto_prune").checked,
     max_library_gb: Number($("max_library_gb").value),

@@ -39,7 +39,7 @@ Markers live in a sidecar index beside the settings, keyed by file name, the sam
 shape as the ImgBB link index - a session file is not a place to put metadata we
 want to edit later.
 
-### Sending a clip to Discord
+### Sending a clip to Discord — done in 0.2.3
 
 A webhook URL in Settings and a **Send to Discord** button. No server, no
 account, no bot: a webhook is a URL that posts to one channel, so the whole

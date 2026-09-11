@@ -39,6 +39,32 @@ pub struct Request {
     /// Stream copy instead of re-encoding. Instant, and leaves up to two
     /// seconds of the cut inside the file - see the module note.
     pub fast: bool,
+    /// Squeeze the result under this many bytes by lowering the bitrate rather
+    /// than by cutting more. Ignored when `fast` is set, because a stream copy
+    /// cannot change the bitrate it is copying.
+    pub fit_bytes: Option<u64>,
+}
+
+/// Audio is a rounding error next to video, but at the bitrates a size limit
+/// forces it stops being one, so it is budgeted for explicitly.
+pub const AUDIO_KBPS: u32 = 160;
+
+/// Below this the picture is a smear and the clip is not worth sending.
+/// Measured against 1080p gameplay, which is what this records.
+pub const MIN_USEFUL_KBPS: u32 = 1_500;
+
+/// The video bitrate that fits `bytes` of output into `seconds` of clip.
+///
+/// Deliberately shy of the limit. A muxer writes headers and an index, and a
+/// rate control aims at the target rather than hitting it exactly - landing at
+/// 100.4% of a hard cap means the upload is refused and the whole re-encode was
+/// wasted.
+pub fn bitrate_to_fit(bytes: u64, seconds: f64) -> u32 {
+    if seconds <= 0.0 {
+        return MIN_USEFUL_KBPS;
+    }
+    let budget = (bytes as f64 * 0.95 * 8.0) / seconds / 1000.0;
+    (budget - AUDIO_KBPS as f64).max(0.0) as u32
 }
 
 /// Cut `source` down to `start`..`end`, in seconds from the start of the file.
@@ -57,6 +83,7 @@ pub fn trim(
         end,
         replace,
         fast,
+        fit_bytes,
     } = *request;
     let duration = end - start;
     if !start.is_finite() || !end.is_finite() || start < 0.0 {
@@ -98,11 +125,19 @@ pub fn trim(
         }
     }
 
+    // A size limit overrides the capture bitrate: the point is landing under it,
+    // not preserving the quality the recorder happened to be using. A stream
+    // copy cannot change the bitrate it is copying, so `fast` wins.
+    let mut settings = settings.clone();
+    if let Some(bytes) = fit_bytes.filter(|_| !fast) {
+        settings.bitrate_kbps = bitrate_to_fit(bytes, duration);
+    }
+
     let mut last = String::new();
     for encoder in attempts {
         match run(
             ffmpeg_path,
-            settings,
+            &settings,
             encoder,
             source,
             start,
@@ -307,6 +342,7 @@ mod tests {
                 end: 10.0,
                 replace: false,
                 fast: false,
+                fit_bytes: None,
             },
         )
         .unwrap_err();
@@ -385,6 +421,7 @@ mod ffmpeg_tests {
                 end: 12.0,
                 replace: false,
                 fast: false,
+                fit_bytes: None,
             },
         )
         .expect("trim succeeds");
@@ -426,6 +463,7 @@ mod ffmpeg_tests {
                 end: 6.0,
                 replace: true,
                 fast: false,
+                fit_bytes: None,
             },
         )
         .expect("trim succeeds");
@@ -497,6 +535,7 @@ mod ffmpeg_tests {
                 end: 12.0,
                 replace: false,
                 fast: true,
+                fit_bytes: None,
             },
         )
         .unwrap();
@@ -513,6 +552,7 @@ mod ffmpeg_tests {
                 end: 12.0,
                 replace: false,
                 fast: false,
+                fit_bytes: None,
             },
         )
         .unwrap();
@@ -559,6 +599,7 @@ mod ffmpeg_tests {
                 end: 5.0,
                 replace: true,
                 fast: false,
+                fit_bytes: None,
             },
         )
         .unwrap_err();
@@ -574,5 +615,58 @@ mod ffmpeg_tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(left, vec!["Clip.mp4"], "no scratch file may be left behind");
+    }
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::*;
+
+    /// The trimmer shows the bitrate its selection will be encoded at. If the
+    /// front end's arithmetic and this one disagree, the readout is a lie about
+    /// the file the user is about to get.
+    ///
+    /// These are the numbers `ui/trim.js` produced for a 25 MB limit, read
+    /// straight out of the running page.
+    #[test]
+    fn matches_what_the_front_end_shows() {
+        for (seconds, expected_kbps) in
+            [(5.0, 37_840), (10.0, 18_840), (15.0, 12_507), (20.0, 9_340)]
+        {
+            let got = bitrate_to_fit(25_000_000, seconds);
+            assert!(
+                got.abs_diff(expected_kbps) <= 1,
+                "{seconds}s: front end says {expected_kbps} kbps, backend says {got}"
+            );
+        }
+    }
+
+    /// Leaving headroom is the point: landing at 100.4% of a hard cap means the
+    /// upload is refused and the whole re-encode was wasted.
+    #[test]
+    fn the_estimate_stays_under_the_limit() {
+        for seconds in [3.0, 12.0, 60.0, 240.0] {
+            let kbps = bitrate_to_fit(25_000_000, seconds);
+            let predicted_bytes = ((kbps + AUDIO_KBPS) as f64 * 1000.0 * seconds / 8.0) as u64;
+            assert!(
+                predicted_bytes < 25_000_000,
+                "{seconds}s would land at {predicted_bytes} bytes"
+            );
+        }
+    }
+
+    /// A clip long enough that fitting it would smear it is not worth sending,
+    /// and the app says so rather than producing one.
+    #[test]
+    fn a_long_clip_falls_below_what_is_worth_watching() {
+        // Five minutes into 25 MB.
+        assert!(bitrate_to_fit(25_000_000, 300.0) < MIN_USEFUL_KBPS);
+        // Thirty seconds into 25 MB is comfortably fine.
+        assert!(bitrate_to_fit(25_000_000, 30.0) > MIN_USEFUL_KBPS);
+    }
+
+    #[test]
+    fn a_zero_length_selection_does_not_divide_by_zero() {
+        assert_eq!(bitrate_to_fit(25_000_000, 0.0), MIN_USEFUL_KBPS);
     }
 }

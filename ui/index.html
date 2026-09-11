@@ -261,6 +261,31 @@
               <input type="checkbox" id="imgbb_auto_upload" />
               <span>Upload every screenshot automatically and copy the link</span>
             </label>
+
+            <label class="field">
+              <span>Discord webhook</span>
+              <input type="password" id="discord_webhook" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" />
+              <small class="muted">
+                Channel settings &rarr; Integrations &rarr; Webhooks &rarr; New Webhook, then
+                Copy Webhook URL. It posts to that one channel. Treat it like a
+                password: anyone who has it can post there.
+              </small>
+            </label>
+            <label class="field">
+              <span>Discord upload limit</span>
+              <select id="discord_limit_mb">
+                <option value="10">10 MB — no Nitro, unboosted server</option>
+                <option value="25">25 MB — larger free limit</option>
+                <option value="50">50 MB — Nitro Basic, or a Level 2 server</option>
+                <option value="100">100 MB — Level 3 server</option>
+                <option value="500">500 MB — Nitro</option>
+              </select>
+              <small class="muted">
+                Discord has changed this more than once and it differs per
+                server, so pick what yours actually allows. Too high and the
+                upload is refused after the wait.
+              </small>
+            </label>
           </fieldset>
 
           <fieldset>

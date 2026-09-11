@@ -852,6 +852,9 @@ pub async fn trim_clip(
     end: f64,
     replace: bool,
     fast: bool,
+    // fit_discord: squeeze the output under the Discord limit by lowering the
+    // bitrate rather than by cutting more off.
+    fit_discord: bool,
 ) -> Result<String, String> {
     let handle = app.clone();
     let saved = tauri::async_runtime::spawn_blocking(move || {
@@ -879,6 +882,7 @@ pub async fn trim_clip(
                 end,
                 replace,
                 fast,
+                fit_bytes: fit_discord.then(|| settings.discord_limit_mb as u64 * 1_000_000),
             },
         )
     })
@@ -956,6 +960,41 @@ pub async fn upload_imgbb(
     state.links.record(&path, &result);
     let _ = app.clipboard().write_text(result.url.clone());
     Ok(result)
+}
+
+/// Post a file to the user's Discord channel.
+#[tauri::command]
+pub async fn send_to_discord(app: AppHandle, path: String, message: String) -> Result<(), String> {
+    let (webhook, limit_mb) = {
+        let s = app.state::<AppState>();
+        let s = s.settings.lock();
+        (s.discord_webhook.clone(), s.discord_limit_mb)
+    };
+
+    let path = PathBuf::from(path);
+    // Checked before the upload rather than after: Discord refuses an oversized
+    // file only once it has all of it, which on a home connection is a minute
+    // of waiting to be told no.
+    let size = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| format!("could not read the file: {e}"))?
+        .len();
+    let limit = limit_mb as u64 * 1_000_000;
+    if size > limit {
+        return Err(format!(
+            "That file is {:.1} MB and your Discord limit is {limit_mb} MB. Trim it and              use Fit to Discord, or raise the limit in Settings if your server allows more.",
+            size as f64 / 1e6
+        ));
+    }
+
+    upload::discord(&webhook, &path, &message).await
+}
+
+/// The upload limit this machine is set to post under, in bytes. The trimmer
+/// needs it to estimate whether a selection will fit.
+#[tauri::command]
+pub fn discord_limit_bytes(state: State<AppState>) -> u64 {
+    state.settings.lock().discord_limit_mb as u64 * 1_000_000
 }
 
 /// Put the clip where YouTube's own upload page can reach it in one paste.

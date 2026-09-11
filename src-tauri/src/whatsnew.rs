@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.3",
+        lines: &[
+            "Send a clip or screenshot straight to Discord. Paste a webhook URL in Settings and pick the upload limit your server actually allows.",
+            "Clips are almost always too big for Discord, so the trimmer squeezes rather than cuts: pick the moment you want and Fit & send works out the bitrate that fits it under the limit.",
+            "It says what that will cost before you commit, and refuses outright when a clip is long enough that fitting it would only produce a smear.",
+        ],
+    },
+    Release {
         version: "0.2.2",
         lines: &[
             "Taking a screenshot no longer freezes the game for about a second. It was asking the capture source for one frame per second, so it sat waiting out the whole interval before it got one.",

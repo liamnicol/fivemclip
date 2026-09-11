@@ -309,6 +309,36 @@ The key is yours and is stored only on your PC. FiveMClip deliberately does not
 ship a shared key — a key baked into a distributed binary gets extracted and
 rate-limited within a week, and then it stops working for everybody.
 
+### Discord
+
+Make a webhook in the channel you want clips to land in — *Channel settings →
+Integrations → Webhooks → New Webhook → Copy Webhook URL* — and paste it into
+Settings. It posts to that one channel, needs no bot and no account.
+
+Treat the URL like a password. Anyone holding it can post to that channel. It is
+stored only on your PC and goes nowhere but discord.com.
+
+Also pick your server's **upload limit**. Discord has changed this more than
+once and it differs by Nitro tier and boost level, so it is a setting rather
+than a number baked in.
+
+Anything already under the limit gets a **To Discord** button in the Library.
+Clips usually are not: at 30 Mbps only about seven seconds fits in 25 MB.
+
+So the trimmer squeezes instead of cutting. Pick the moment you actually want
+and press **Fit & send to Discord** — it works out the bitrate that fits that
+selection under your limit and re-encodes to it. The readout tells you what that
+will cost before you commit:
+
+| | |
+| --- | --- |
+| `Fits 25 MB at 9.3 Mbps` | good |
+| `Fits 25 MB at 3.2 Mbps — soft` | watchable |
+| `Too long for 25 MB` | it refuses, and points you at YouTube |
+
+Five minutes will not go to Discord at any quality worth watching, and the app
+says so rather than quietly producing a smear.
+
 ### YouTube (clips)
 
 The **To YouTube** button opens YouTube's upload page, reveals the clip in

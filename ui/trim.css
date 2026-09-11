@@ -38,6 +38,11 @@ body { display: flex; flex-direction: column; }
   border-radius: 999px; padding: 5px 13px;
 }
 .pill strong { font-variant-numeric: tabular-nums; }
+/* How the selection would land against the Discord limit. Colour rather than
+   wording, because it changes on every drag and is read at a glance. */
+#fit-pill.good { color: #6fdc8c; border-color: rgba(111, 220, 140, .45); }
+#fit-pill.ok { color: #f0a92a; border-color: rgba(240, 169, 42, .45); }
+#fit-pill.bad { color: #ff8a85; border-color: rgba(229, 58, 53, .5); }
 
 .btn {
   background: var(--panel-2); color: var(--text);
