@@ -84,6 +84,22 @@ video { max-width: 100%; max-height: 100%; display: block; background: #000; }
   background: rgba(229, 58, 53, .12);
   pointer-events: none;
 }
+/* Moments marked while recording. Above the dimming so they stay findable
+   outside the selection - that is the point of them. */
+.marks { position: absolute; inset: 0; pointer-events: none; }
+.mark {
+  position: absolute; top: -6px; width: 3px; height: 12px;
+  margin-left: -1.5px; border-radius: 2px;
+  background: #f0a92a; box-shadow: 0 0 5px rgba(0, 0, 0, .7);
+  pointer-events: auto; cursor: pointer; border: 0; padding: 0;
+}
+.mark::after {
+  /* A hairline down the track, so a mark is readable against the selection. */
+  content: ""; position: absolute; left: 0; top: 12px; width: 3px; height: 44px;
+  background: rgba(240, 169, 42, .35);
+}
+.mark:hover { background: #ffc457; }
+
 .playhead {
   position: absolute; top: -3px; bottom: -3px; width: 2px;
   background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .8);

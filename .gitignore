@@ -3,3 +3,6 @@ src-tauri/gen/
 src-tauri/bin/ffmpeg.exe
 src-tauri/bin/*.exe
 *.log
+
+# Fixtures dropped into ui/ to drive the front end in a browser.
+ui/__test-*

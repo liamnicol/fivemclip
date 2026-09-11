@@ -45,7 +45,7 @@ your case.
   about a second. How much it remembers and how much a clip keeps are separate
   settings, so a 20 minute buffer does not mean a 20 minute file every time.
 - **Session recording** for a whole night, started and stopped on its own
-  hotkey and kept apart from your clips.
+  hotkey and kept apart from your clips, with a key to mark moments as you go.
 - **Screenshots** on a separate hotkey, full screen or a rectangle you drag.
 - **A screenshot editor** that hides things (black out, pixelate, blur) and
   marks them up (arrow, box, crop).
@@ -127,6 +127,7 @@ and that copy behaves like an installed one.
 | Save clip | `F9` |
 | Screenshot | `F10` |
 | Screenshot a region | `F11` |
+| Mark this moment | `F7` |
 | Start / stop a session | `F8` |
 | Toggle the buffer | `Ctrl+F9` |
 
@@ -160,6 +161,20 @@ Two things worth knowing:
 - **Sessions are never auto-deleted.** The library cap below leaves them alone.
   They are the largest files the app produces and the ones nobody wants
   disappearing on them, so removing them is a decision you make yourself.
+
+### Marking moments
+
+Press `F7` while a session is recording and FiveMClip writes down where you
+were. The session card counts them as you go, the Library shows how many a
+recording has, and the trimmer draws each one on the timeline as a tick you can
+click to jump straight to - with **‹ Mark** and **Mark ›** to step between them.
+
+This is what makes a long session worth keeping. Three hours of footage with no
+marks is three hours of scrubbing to find the one thing you recorded it for.
+
+Marks are approximate rather than frame-exact: the stitched file can begin up to
+two seconds after the session did. They put you within a second or two of the
+moment, and the trim handles do the rest.
 
 **Discard** throws the session away without writing it, for when you started one
 by accident.

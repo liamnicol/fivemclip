@@ -8,6 +8,7 @@ mod diagnostics;
 mod hotkeys;
 mod library;
 mod links;
+mod markers;
 mod state;
 mod updates;
 mod upload;
@@ -50,6 +51,8 @@ fn main() {
             commands::save_clip,
             commands::start_session,
             commands::stop_session,
+            commands::mark_session,
+            commands::markers_for,
             commands::discard_session,
             commands::take_screenshot,
             commands::start_region_capture,

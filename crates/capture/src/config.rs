@@ -90,6 +90,8 @@ pub struct Settings {
     /// Start and stop a whole-session recording.
     pub hotkey_session: String,
     pub hotkey_toggle_buffer: String,
+    /// Drop a marker into the running session.
+    pub hotkey_marker: String,
 
     /// Personal ImgBB key. Deliberately per-user: a shared key baked into a
     /// distributed binary gets extracted and rate-limited within a week.
@@ -138,6 +140,7 @@ impl Default for Settings {
             hotkey_region: "F11".into(),
             hotkey_session: "F8".into(),
             hotkey_toggle_buffer: "Ctrl+F9".into(),
+            hotkey_marker: "F7".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
             last_seen_version: String::new(),

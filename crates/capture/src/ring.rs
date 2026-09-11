@@ -48,6 +48,15 @@ struct Session {
     /// an Instant.
     started_at: std::time::SystemTime,
     label: String,
+    /// Offsets, in seconds from `started_at`, that the user marked as worth
+    /// coming back to.
+    ///
+    /// Measured the same way `session_seconds` is, so a marker lines up with
+    /// the duration the UI was showing when it was dropped. The stitched file
+    /// can start up to one segment later than `started_at`, so these are
+    /// "roughly here" rather than frame-exact - which is all a three hour
+    /// recording needs, and the trimmer is there for the rest.
+    markers: Vec<f64>,
     /// Size on disk, refreshed occasionally rather than on every status poll.
     ///
     /// Status is polled about once a second and the ring grows without bound
@@ -66,6 +75,13 @@ struct Running {
     warnings: Vec<String>,
 }
 
+/// A finished session: where it was written, and the moments marked during it.
+#[derive(Debug, Clone)]
+pub struct SavedSession {
+    pub path: PathBuf,
+    pub markers: Vec<f64>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RecorderStatus {
     pub running: bool,
@@ -76,6 +92,7 @@ pub struct RecorderStatus {
     pub session_active: bool,
     pub session_seconds: u64,
     pub session_bytes: u64,
+    pub session_markers: usize,
 }
 
 impl Recorder {
@@ -130,6 +147,7 @@ impl Recorder {
             session_active: self.session.is_some(),
             session_seconds,
             session_bytes,
+            session_markers: self.session_marker_count(),
         }
     }
 
@@ -378,6 +396,7 @@ impl Recorder {
         self.session = Some(Session {
             started_at: std::time::SystemTime::now(),
             label: chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string(),
+            markers: Vec::new(),
             cached_bytes: 0,
             measured_at: None,
         });
@@ -388,6 +407,32 @@ impl Recorder {
             return Err(e);
         }
         Ok(())
+    }
+
+    /// Mark the current moment as worth coming back to.
+    ///
+    /// Returns where in the session it landed, so the UI can say "marked at
+    /// 1h42" rather than just "marked".
+    pub fn mark_session(&mut self) -> Result<f64, String> {
+        let session = self
+            .session
+            .as_mut()
+            .ok_or("Markers are for session recordings - start one first.")?;
+        let at = session
+            .started_at
+            .elapsed()
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        // A double press is a slip, not two moments a second apart.
+        if session.markers.last().is_some_and(|last| at - last < 1.0) {
+            return Ok(at);
+        }
+        session.markers.push(at);
+        Ok(at)
+    }
+
+    pub fn session_marker_count(&self) -> usize {
+        self.session.as_ref().map(|s| s.markers.len()).unwrap_or(0)
     }
 
     /// Finish the session and write it out.
@@ -401,7 +446,7 @@ impl Recorder {
     /// will not thumbnail and half the web will not accept.
     ///
     /// Sessions already on disk keep working: the library still lists .mkv.
-    pub fn stop_session(&mut self) -> Result<PathBuf, String> {
+    pub fn stop_session(&mut self) -> Result<SavedSession, String> {
         let session = self.session.take().ok_or("No session is being recorded.")?;
 
         // Killing ffmpeg truncates whatever segment is mid-write, so up to
@@ -433,7 +478,10 @@ impl Recorder {
                 if was_running {
                     let _ = self.start();
                 }
-                Ok(out)
+                Ok(SavedSession {
+                    path: out,
+                    markers: session.markers,
+                })
             }
             Err(e) => {
                 // Put the session back before restarting. Without this the

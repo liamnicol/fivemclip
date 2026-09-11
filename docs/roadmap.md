@@ -24,7 +24,7 @@ three were.
 
 Two features, both decided.
 
-### Markers while recording
+### Markers while recording — done in 0.2.0
 
 A hotkey that drops a timestamp into the running session. The Library shows the
 count, the trim timeline shows them as ticks you can click to jump between, and

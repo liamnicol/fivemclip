@@ -5,6 +5,7 @@ use fivemclip_capture::config::Settings;
 use serde::Serialize;
 
 use crate::links::{LinkRecord, Links};
+use crate::markers::Markers;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MediaItem {
@@ -17,12 +18,17 @@ pub struct MediaItem {
     /// Where this one was uploaded, if it ever was. The whole point of keeping
     /// the index: the link outlives the toast that first showed it.
     pub link: Option<LinkRecord>,
+    /// How many moments were marked during this recording. The Library only
+    /// needs the count; the trimmer asks for the offsets when it opens one.
+    pub marker_count: usize,
 }
 
-pub fn list(settings: &Settings, links: &Links) -> Vec<MediaItem> {
+pub fn list(settings: &Settings, links: &Links, markers: &Markers) -> Vec<MediaItem> {
     let mut items = scan(settings);
     for item in &mut items {
-        item.link = links.get(Path::new(&item.path));
+        let path = Path::new(&item.path);
+        item.link = links.get(path);
+        item.marker_count = markers.get(path).len();
     }
     items
 }
@@ -82,6 +88,7 @@ fn collect(dir: &Path, kind: &'static str, exts: &[&str], out: &mut Vec<MediaIte
             size_bytes: meta.len(),
             modified_ms,
             link: None,
+            marker_count: 0,
         });
     }
 }
@@ -143,7 +150,8 @@ mod tests {
         std::fs::write(settings.sessions_dir().join("Session_new.mp4"), b"x").unwrap();
 
         let links = Links::load(dir.join("links.json"));
-        let names: Vec<String> = list(&settings, &links)
+        let markers = Markers::load(dir.join("markers.json"));
+        let names: Vec<String> = list(&settings, &links, &markers)
             .into_iter()
             .filter(|i| i.kind == "session")
             .map(|i| i.name)
@@ -168,7 +176,8 @@ mod tests {
         std::fs::write(settings.sessions_dir().join("Session_a.mp4"), b"x").unwrap();
 
         let links = Links::load(dir.join("links.json"));
-        let items = list(&settings, &links);
+        let markers = Markers::load(dir.join("markers.json"));
+        let items = list(&settings, &links, &markers);
         let kind = |name: &str| {
             items
                 .iter()

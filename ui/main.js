@@ -116,8 +116,10 @@ function renderStatus(status) {
   // saving it is the one thing the user needs to be able to do.
   sessionButton.disabled = status.session_active ? false : !status.running;
   $("btn-session-discard").hidden = !status.session_active;
+  $("btn-mark").hidden = !status.session_active;
   $("session-summary").textContent = status.session_active
-    ? `Recording ${formatDuration(status.session_seconds)} · ${formatBytes(status.session_bytes)}`
+    ? `Recording ${formatDuration(status.session_seconds)} · ${formatBytes(status.session_bytes)}` +
+      (status.session_markers ? ` · ${status.session_markers} marked` : "")
     : "Not recording a session.";
 
   const alerts = $("alerts");
@@ -226,6 +228,12 @@ $("btn-session").addEventListener("click", async () => {
   }
 });
 
+$("btn-mark").addEventListener("click", async () => {
+  const at = await call("mark_session");
+  toast(`Marked at ${formatDuration(Math.round(at))}`);
+  pollStatus();
+});
+
 $("btn-session-discard").addEventListener("click", async () => {
   // Deliberately blunt wording: this throws away everything since the session
   // started, which may be hours.
@@ -320,6 +328,9 @@ function renderLibrary() {
     const kind = `<span class="kind kind-${item.kind}">${KINDS[item.kind] ?? item.kind}</span>`;
 
     const when = new Date(item.modified_ms).toLocaleString();
+    const marked = item.marker_count
+      ? ` · ${item.marker_count} marked`
+      : "";
     // An already-uploaded screenshot keeps its link instead of offering the
     // upload again - a second upload would just orphan the first one on ImgBB.
     const share = isVideo
@@ -340,7 +351,7 @@ function renderLibrary() {
       <div class="shot">${thumb}${kind}</div>
       <div class="meta">
         <span class="name">${escapeHtml(item.name)}</span>
-        <span class="sub">${when} · ${formatBytes(item.size_bytes)}</span>
+        <span class="sub">${when} · ${formatBytes(item.size_bytes)}${marked}</span>
         ${link}
       </div>
       <div class="actions">
@@ -637,6 +648,7 @@ function applySettings(next) {
   setCombo($("hotkey_screenshot"), next.hotkey_screenshot);
   setCombo($("hotkey_region"), next.hotkey_region);
   setCombo($("hotkey_session"), next.hotkey_session);
+  setCombo($("hotkey_marker"), next.hotkey_marker);
   setCombo($("hotkey_toggle_buffer"), next.hotkey_toggle_buffer);
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
@@ -666,6 +678,7 @@ function applySettings(next) {
   $("hint-region").textContent = prettyCombo(next.hotkey_region) || "no hotkey";
   $("hint-session").textContent = prettyCombo(next.hotkey_session) || "no hotkey";
   $("hint-toggle").textContent = prettyCombo(next.hotkey_toggle_buffer) || "no hotkey";
+  $("hint-marker").textContent = prettyCombo(next.hotkey_marker) || "no hotkey";
 }
 
 /* ---------------- trigger apps ---------------- */
@@ -738,6 +751,7 @@ function collectSettings() {
     hotkey_screenshot: $("hotkey_screenshot").dataset.combo ?? "",
     hotkey_region: $("hotkey_region").dataset.combo ?? "",
     hotkey_session: $("hotkey_session").dataset.combo ?? "",
+    hotkey_marker: $("hotkey_marker").dataset.combo ?? "",
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").dataset.combo ?? "",
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,

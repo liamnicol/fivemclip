@@ -7,6 +7,7 @@ use fivemclip_capture::Recorder;
 use parking_lot::Mutex;
 
 use crate::links::Links;
+use crate::markers::Markers;
 
 pub struct AppState {
     pub settings: Mutex<Settings>,
@@ -14,6 +15,8 @@ pub struct AppState {
     pub ffmpeg: Option<PathBuf>,
     /// ImgBB links, remembered per screenshot.
     pub links: Links,
+    /// Moments marked during a session.
+    pub markers: Markers,
     settings_path: PathBuf,
     /// Set while the user has deliberately switched the buffer off, so the
     /// "only while FiveM is running" watchdog does not turn it back on.
@@ -41,16 +44,19 @@ impl AppState {
             .unwrap_or_default();
         settings.clamp();
 
-        let links_path = settings_path
+        // Both indexes live beside the settings file, wherever that turned out
+        // to be - which for a portable copy is the program's own folder.
+        let beside = settings_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join("links.json");
+            .to_path_buf();
 
         AppState {
             settings: Mutex::new(settings),
             recorder: Mutex::new(None),
             ffmpeg: ffmpeg::find_ffmpeg(),
-            links: Links::load(links_path),
+            links: Links::load(beside.join("links.json")),
+            markers: Markers::load(beside.join("markers.json")),
             settings_path,
             editor_target: Mutex::new(None),
             trim_target: Mutex::new(None),

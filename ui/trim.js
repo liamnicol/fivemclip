@@ -12,6 +12,8 @@ let duration = 0;
 let start = 0;
 let end = 0;
 let dragging = null;
+/** Offsets, in seconds, marked while the session was recording. */
+let marks = [];
 /** Set while playing back only the selection, so the end handle acts as a stop
  *  point without that also applying when someone scrubs past it by hand. */
 let previewing = false;
@@ -49,6 +51,9 @@ function paint() {
   $("handle-start").style.left = pct(start);
   $("handle-end").style.left = pct(end);
   $("playhead").style.left = pct(video.currentTime);
+  for (const [i, tick] of [...$("marks").children].entries()) {
+    tick.style.left = pct(marks[i]);
+  }
 
   $("time-start").textContent = clock(start);
   $("time-end").textContent = clock(end);
@@ -73,6 +78,44 @@ function setEnd(t) {
   end = clamp(t, Math.min(duration, start + MIN_SECONDS), duration);
   paint();
 }
+
+/** Draw the marks once, on load. They do not move, only the scale does, and
+ *  rebuilding them on every paint would throw away the button being hovered. */
+function drawMarks() {
+  const box = $("marks");
+  box.innerHTML = "";
+  for (const at of marks) {
+    const tick = document.createElement("button");
+    tick.className = "mark";
+    tick.type = "button";
+    tick.title = `Marked at ${clock(at)} — click to jump here`;
+    tick.addEventListener("click", (event) => {
+      event.stopPropagation();
+      previewing = false;
+      video.currentTime = at;
+      paint();
+    });
+    box.append(tick);
+  }
+  const any = marks.length > 0;
+  $("prev-mark").hidden = !any;
+  $("next-mark").hidden = !any;
+}
+
+function jumpMark(forward) {
+  const now = video.currentTime;
+  // A small margin, so "next" from exactly on a mark does not stay put.
+  const next = forward
+    ? marks.find((m) => m > now + 0.25)
+    : [...marks].reverse().find((m) => m < now - 0.25);
+  if (next === undefined) return;
+  previewing = false;
+  video.currentTime = next;
+  paint();
+}
+
+$("prev-mark").addEventListener("click", () => jumpMark(false));
+$("next-mark").addEventListener("click", () => jumpMark(true));
 
 /* ---------------- the track ---------------- */
 
@@ -218,6 +261,15 @@ function load(path) {
   duration = 0;
   start = 0;
   end = 0;
+  marks = [];
+  drawMarks();
+  invoke("markers_for", { path })
+    .then((found) => {
+      marks = found ?? [];
+      drawMarks();
+      if (duration) paint();
+    })
+    .catch(() => {});
   $("timeline").hidden = true;
   $("loading").hidden = false;
   $("loading").textContent = "Loading…";

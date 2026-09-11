@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.0",
+        lines: &[
+            "Mark a moment while you record. Press F7 during a session and the Library and the trimmer both remember where it was.",
+            "The trim timeline shows every mark as a tick you can click to jump to, with buttons to step between them.",
+            "A three hour session is no longer something you have to scrub through to find the one thing you kept it for.",
+        ],
+    },
+    Release {
         version: "0.1.9",
         lines: &[
             "Clip length is its own setting. A clip used to be the whole buffer, so a 20 minute buffer wrote a 20 minute file every single time you pressed the key. Keep a long buffer and a short clip.",

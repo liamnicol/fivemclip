@@ -112,6 +112,7 @@ pub fn get_status(state: State<AppState>) -> Status {
             session_active: false,
             session_seconds: 0,
             session_bytes: 0,
+            session_markers: 0,
         },
     };
     let free = fivemclip_capture::disk::free_for(&settings);
@@ -544,22 +545,34 @@ pub async fn stop_session(app: AppHandle) -> Result<String, String> {
     // the UI for it would look exactly like a hang.
     let saved = tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
-        let mut guard = state.recorder.lock();
-        let recorder = guard
-            .as_mut()
-            .ok_or_else(|| "No session is being recorded.".to_string())?;
-        recorder.stop_session()
+        let saved = {
+            let mut guard = state.recorder.lock();
+            let recorder = guard
+                .as_mut()
+                .ok_or_else(|| "No session is being recorded.".to_string())?;
+            recorder.stop_session()?
+        };
+        // Written only once the file it describes exists, so a failed save
+        // cannot leave markers pointing at nothing.
+        state.markers.set(&saved.path, saved.markers.clone());
+        Ok::<_, String>(saved)
     })
     .await
     .map_err(|e| format!("saving the session was interrupted: {e}"))?;
 
     match saved {
-        Ok(path) => {
+        Ok(saved) => {
+            let path = saved.path;
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            notify(&app, "Session saved", &name);
+            let marked = match saved.markers.len() {
+                0 => name.clone(),
+                1 => format!("{name} · 1 marker"),
+                n => format!("{name} · {n} markers"),
+            };
+            notify(&app, "Session saved", &marked);
 
             let settings = app.state::<AppState>().settings.lock().clone();
             let pruned = fivemclip_capture::disk::prune(&settings);
@@ -581,6 +594,25 @@ pub async fn stop_session(app: AppHandle) -> Result<String, String> {
             Err(e)
         }
     }
+}
+
+/// Mark the current moment in the running session.
+///
+/// Sync on purpose: it appends a number to a Vec, and going through the async
+/// runtime to do that would put the hotkey behind whatever else is queued.
+#[tauri::command]
+pub fn mark_session(state: State<AppState>) -> Result<f64, String> {
+    let mut guard = state.recorder.lock();
+    let recorder = guard
+        .as_mut()
+        .ok_or_else(|| "The replay buffer is not running.".to_string())?;
+    recorder.mark_session()
+}
+
+/// Marks on a saved recording, for the trimmer's timeline.
+#[tauri::command]
+pub fn markers_for(state: State<AppState>, path: String) -> Vec<f64> {
+    state.markers.get(&PathBuf::from(path))
 }
 
 #[tauri::command]
@@ -858,7 +890,7 @@ pub async fn trim_clip(
 
 #[tauri::command]
 pub fn library_items(state: State<AppState>) -> Vec<MediaItem> {
-    library::list(&state.settings.lock(), &state.links)
+    library::list(&state.settings.lock(), &state.links, &state.markers)
 }
 
 #[tauri::command]
@@ -868,8 +900,9 @@ pub fn delete_item(state: State<AppState>, path: String) -> Result<(), String> {
         return Err("That file is not in the FiveMClip folders.".into());
     }
     std::fs::remove_file(&path).map_err(|e| format!("Could not delete: {e}"))?;
-    // The file is gone; a link pointing at it is just clutter in the index.
+    // The file is gone; anything pointing at it is just clutter in the index.
     state.links.forget(&path);
+    state.markers.forget(&path);
     Ok(())
 }
 

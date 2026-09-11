@@ -12,6 +12,7 @@ enum Action {
     RegionShot,
     ToggleSession,
     ToggleBuffer,
+    MarkMoment,
 }
 
 /// Rebind every hotkey from the current settings. Called at startup and after
@@ -41,6 +42,7 @@ fn register_now(app: &AppHandle, settings: &Settings) {
         (&settings.hotkey_region, Action::RegionShot),
         (&settings.hotkey_session, Action::ToggleSession),
         (&settings.hotkey_toggle_buffer, Action::ToggleBuffer),
+        (&settings.hotkey_marker, Action::MarkMoment),
     ] {
         let combo = combo.trim();
         if combo.is_empty() {
@@ -148,14 +150,21 @@ fn run(app: &AppHandle, action: Action) {
                     }
                 };
                 match saved {
-                    Ok(path) => notify(
-                        app,
-                        "Session saved",
-                        &path
+                    Ok(saved) => {
+                        let state = app.state::<AppState>();
+                        state.markers.set(&saved.path, saved.markers.clone());
+                        let name = saved
+                            .path
                             .file_name()
                             .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_default(),
-                    ),
+                            .unwrap_or_default();
+                        let marked = match saved.markers.len() {
+                            0 => name,
+                            1 => format!("{name} · 1 marker"),
+                            n => format!("{name} · {n} markers"),
+                        };
+                        notify(app, "Session saved", &marked);
+                    }
                     Err(e) => notify(app, "Could not save the session", &e),
                 }
             } else {
@@ -176,6 +185,19 @@ fn run(app: &AppHandle, action: Action) {
                 }
             }
         }
+        Action::MarkMoment => {
+            let marked = {
+                let mut guard = state.recorder.lock();
+                match guard.as_mut() {
+                    Some(r) => r.mark_session(),
+                    None => Err("The replay buffer is not running.".into()),
+                }
+            };
+            match marked {
+                Ok(at) => notify(app, "Moment marked", &format!("at {}", clock(at))),
+                Err(e) => notify(app, "Nothing to mark", &e),
+            }
+        }
         Action::ToggleBuffer => {
             let running = state
                 .recorder
@@ -193,6 +215,17 @@ fn run(app: &AppHandle, action: Action) {
                 }
             }
         }
+    }
+}
+
+/// h:mm:ss, because a session marker is as likely to be at 2h14m as at 0m12s.
+fn clock(seconds: f64) -> String {
+    let whole = seconds.max(0.0) as u64;
+    let (h, m, s) = (whole / 3600, (whole % 3600) / 60, whole % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
     }
 }
 

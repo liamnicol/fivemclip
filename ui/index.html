@@ -79,6 +79,10 @@
                 <span id="btn-session-label">Start session</span>
                 <small id="hint-session"></small>
               </button>
+              <button class="btn" id="btn-mark" hidden>
+                <span>Mark</span>
+                <small id="hint-marker"></small>
+              </button>
               <button class="btn btn-ghost" id="btn-session-discard" hidden>Discard</button>
             </span>
           </div>
@@ -218,6 +222,10 @@
             <label class="field">
               <span>Start / stop a session</span>
               <input type="text" class="hotkey" id="hotkey_session" readonly />
+            </label>
+            <label class="field">
+              <span>Mark this moment</span>
+              <input type="text" class="hotkey" id="hotkey_marker" readonly />
             </label>
             <label class="field">
               <span>Toggle buffer</span>
