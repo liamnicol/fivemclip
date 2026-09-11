@@ -75,6 +75,14 @@ Everything is written to one folder you pick on first run — it suggests
 Grab the installer from the [Releases](../../releases) page and run it. It
 installs per-user, so there is no UAC prompt.
 
+First launch asks where clips should go, how much to remember, and whether to
+start with Windows — which is ticked, because a replay buffer only helps if it
+was already running when the thing worth keeping happened. Untick it if you
+would rather launch it yourself.
+
+Only one copy runs at a time. Opening it again raises the one you have, rather
+than starting a second that would write over the first one's buffer.
+
 ### Windows will try to stop you
 
 Releases are not code-signed, so Windows SmartScreen blocks the installer. This

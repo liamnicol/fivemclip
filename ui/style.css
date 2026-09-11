@@ -402,6 +402,7 @@ kbd {
   text-align: center;
 }
 
+.setup-hint { display: block; font-size: 12px; line-height: 1.5; margin: -10px 0 18px 26px; }
 .setup-note { font-size: 12px; line-height: 1.6; margin-bottom: 22px; }
 
 .btn-wide { width: 100%; padding: 12px; font-size: 15px; }

@@ -20,10 +20,13 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
-        version: "0.2.1",
+        version: "0.2.2",
         lines: &[
             "Taking a screenshot no longer freezes the game for about a second. It was asking the capture source for one frame per second, so it sat waiting out the whole interval before it got one.",
-            "How long a grab took is now in the log, so if your machine still hitches there is a number rather than a guess.",
+            "Opening FiveMClip twice now raises the copy you already have instead of starting a second one. Two copies shared a buffer folder and wrote over each other's footage.",
+            "Updates are rechecked while the app is running, not only when it starts - useful if you leave it in the tray for weeks.",
+            "New installs start with Windows by default, ticked on the first-run screen with the reason. A replay buffer only helps if it was already running. Anyone who turned it off stays off.",
+            "How long a screen grab took is now in the log, so if your machine still hitches there is a number rather than a guess.",
         ],
     },
     Release {

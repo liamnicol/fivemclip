@@ -77,6 +77,12 @@ pub struct Settings {
     /// game, and there is no reason for it to be a hardcoded list.
     pub trigger_processes: Vec<String>,
     pub start_minimized: bool,
+    /// On by default, and offered as a tick on the first-run screen.
+    ///
+    /// A replay buffer is only any use if it was already running when the thing
+    /// worth keeping happened. Launching the app first, every time, is exactly
+    /// the step people forget - and then discover they have forgotten it right
+    /// after the one moment they wanted.
     pub autostart: bool,
     /// Cleared until the user has been through first-run setup. The replay
     /// buffer stays off until then: writing hundreds of megabytes to a folder
@@ -133,7 +139,7 @@ impl Default for Settings {
             only_while_fivem_running: true,
             trigger_processes: vec!["FiveM".into(), "RedM".into()],
             start_minimized: false,
-            autostart: false,
+            autostart: true,
             setup_complete: false,
             hotkey_save_clip: "F9".into(),
             hotkey_screenshot: "F10".into(),
@@ -447,5 +453,27 @@ mod clip_length_tests {
         let s = Settings::default();
         assert_eq!(s.clip_seconds, 60);
         assert!(s.clip_seconds < s.buffer_seconds);
+    }
+}
+
+#[cfg(test)]
+mod autostart_default_tests {
+    use super::*;
+
+    /// A fresh install starts with Windows unless the user unticks it on the
+    /// first-run screen. The buffer is worthless if it was not already running.
+    #[test]
+    fn autostart_is_on_for_a_fresh_install() {
+        assert!(Settings::default().autostart);
+    }
+
+    /// Someone who turned it off must stay off. serde(default) only fills in
+    /// fields that are absent, so a stored `false` has to survive the default
+    /// flipping to true - otherwise an update silently re-enables it.
+    #[test]
+    fn turning_it_off_survives_the_default_changing() {
+        let stored = r#"{"autostart": false}"#;
+        let restored: Settings = serde_json::from_str(stored).expect("parses");
+        assert!(!restored.autostart);
     }
 }

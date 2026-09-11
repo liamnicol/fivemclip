@@ -25,8 +25,31 @@ use tauri_plugin_autostart::MacosLauncher;
 
 use state::AppState;
 
+/// Raise the copy that is already running, instead of starting a second one.
+///
+/// Two instances share the ring folder and its segment names, so the second one
+/// writes over the first one's footage while it is recording. They also fight
+/// over the global hotkeys and the settings file. This has to be registered
+/// before every other plugin - the plugin's own requirement, and it is the
+/// point: nothing else should have started by the time the duplicate gives up.
+fn focus_existing(app: &tauri::AppHandle, argv: Vec<String>, _cwd: String) {
+    diagnostics::log(format!("a second copy was started: {argv:?}"));
+
+    // Windows starting the app at login while it is already running should not
+    // throw the window in someone's face.
+    if argv.iter().any(|a| a == "--minimised") {
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(focus_existing))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())

@@ -14,6 +14,9 @@ fivemclip-capture = { path = "../crates/capture" }
 # devtools in release too: a user hitting a blank window needs to be able to
 # right-click and read the console, which is the whole diagnosis.
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "devtools"] }
+# Two copies share a ring folder and segment names, so the second one corrupts
+# the first one's footage. This is a correctness dependency, not a nicety.
+tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"

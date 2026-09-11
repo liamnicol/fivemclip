@@ -74,6 +74,16 @@ character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as
 input shows a readable label and carries the accelerator in `dataset.combo`;
 `collectSettings` reads the dataset, never the value.
 
+**A single-frame grab must not ask for a low frame rate.** ddagrab paces to the
+rate it is given, so 1 fps means waiting a full second with a Desktop
+Duplication open - which the game in front of it feels as a freeze.
+`shot::GRAB_FPS` is that rate and has a test.
+
+**The updater follows GitHub's *latest release*, which is by publish date, not
+version.** Publishing an older tag after a newer one repoints every installed
+copy at an older manifest, which reads to the updater as "up to date" for ever.
+CI refuses to publish behind the current latest.
+
 **Print Screen only ever arrives as a `keyup`.** Windows takes the keydown for
 the clipboard grab and the Snipping Tool, so a keydown-only capture silently
 ignores the key. The hotkey boxes listen on both; `KEYUP_ONLY` in `ui/main.js`

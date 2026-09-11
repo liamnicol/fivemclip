@@ -268,6 +268,40 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      # The updater reads https://github.com/OWNER/REPO/releases/latest/download/latest.json,
+      # and GitHub decides "latest" by publish date rather than by version. So
+      # publishing an older tag after a newer one silently repoints every
+      # installed copy at the older manifest - which, being a lower version than
+      # they are running, reads to the updater as "you are up to date, for ever".
+      #
+      # Refuse rather than discover that from a user who stopped getting updates.
+      - name: Refuse to publish behind the current latest
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              "User-Agent"  = "fivemclip-ci"
+          }
+          $url = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/latest"
+          try {
+              $current = (Invoke-RestMethod -Uri $url -Headers $headers).tag_name -replace '^v', ''
+          } catch {
+              # No releases yet, which is the one case where there is nothing to
+              # be behind.
+              Write-Host "No published release yet; $tag is the first."
+              exit 0
+          }
+          Write-Host "Publishing $tag; currently published latest is $current."
+          if ([version]$tag -le [version]$current) {
+              throw "Refusing to publish $tag on top of $current. The updater follows " +
+                    "GitHub's latest release, so this would point every installed copy " +
+                    "at an older manifest and stop them updating. Tag a higher version."
+          }
+
       # Tagged pushes become a public download people can point their community at.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')

@@ -22,6 +22,15 @@ use crate::ffmpeg::{self, Pipeline, PIPELINES};
 /// milliseconds.
 pub const GRAB_FPS: u32 = 60;
 
+/// The capture settings a one-frame grab runs with: the user's, but at the grab
+/// rate rather than the recording rate.
+fn grab_settings(s: &Settings) -> Settings {
+    Settings {
+        fps: GRAB_FPS,
+        ..s.clone()
+    }
+}
+
 /// Where the next screenshot should be written, named by the clock.
 pub fn next_screenshot_path(s: &Settings) -> Result<PathBuf, String> {
     let dir = s.screenshots_dir();
@@ -154,10 +163,7 @@ fn try_capture(
     pipeline: &Pipeline,
     out: &std::path::Path,
 ) -> Result<(), String> {
-    let input_settings = Settings {
-        fps: GRAB_FPS,
-        ..s.clone()
-    };
+    let input_settings = grab_settings(s);
 
     let mut args: Vec<String> = vec![
         "-hide_banner".into(),
@@ -219,35 +225,51 @@ fn try_capture(
 mod tests {
     use super::*;
 
+    /// How long the capture source makes us wait for its first frame, in
+    /// milliseconds. This is the number the game feels.
+    fn first_frame_wait_ms(fps: u32) -> u32 {
+        1000 / fps.max(1)
+    }
+
     /// Pins the fix for a screenshot freezing the game for about a second.
     ///
     /// A low grab rate makes ddagrab wait out the frame interval with a Desktop
-    /// Duplication open, which the game in front of it feels. Anything down
-    /// near 1 fps brings the freeze straight back.
+    /// Duplication open, which the game in front of it feels. The old value of
+    /// 1 fps is a full second of that.
     #[test]
-    fn the_grab_rate_is_high_enough_not_to_stall_the_game() {
-        assert!(
-            GRAB_FPS >= 30,
-            "a {GRAB_FPS} fps grab waits {} ms for its first frame",
-            1000 / GRAB_FPS.max(1)
-        );
+    fn the_grab_does_not_wait_long_enough_to_stall_the_game() {
+        let waited = first_frame_wait_ms(GRAB_FPS);
+        assert!(waited <= 34, "a grab waits {waited} ms for its first frame");
+        // What it used to do, for contrast.
+        assert_eq!(first_frame_wait_ms(1), 1000);
     }
 
-    /// The grab rate is the screenshot's alone; it must not follow whatever the
-    /// recorder happens to be set to, or someone recording at 15 fps gets a
-    /// slower screenshot than someone recording at 120.
+    /// The grab rate is the screenshot's alone. Following the recording rate
+    /// would make a screenshot slow for exactly the people who chose a low
+    /// frame rate because their machine is already struggling.
     #[test]
     fn the_grab_rate_ignores_the_recording_frame_rate() {
         for recording_at in [15, 30, 60, 120, 240] {
-            let s = Settings {
+            let asked = grab_settings(&Settings {
                 fps: recording_at,
                 ..Default::default()
-            };
-            let asked = Settings {
-                fps: GRAB_FPS,
-                ..s.clone()
-            };
-            assert_eq!(asked.fps, GRAB_FPS);
+            });
+            assert_eq!(asked.fps, GRAB_FPS, "recording at {recording_at}");
         }
+    }
+
+    /// Everything except the frame rate has to come through, or a grab would
+    /// use the wrong monitor or ignore the cursor setting.
+    #[test]
+    fn a_grab_keeps_the_rest_of_the_settings() {
+        let s = Settings {
+            fps: 30,
+            monitor_index: 2,
+            capture_cursor: true,
+            ..Default::default()
+        };
+        let asked = grab_settings(&s);
+        assert_eq!(asked.monitor_index, 2);
+        assert!(asked.capture_cursor);
     }
 }

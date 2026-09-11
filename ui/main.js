@@ -854,9 +854,9 @@ function showSetup() {
 
 /* ---------------- updates ---------------- */
 
-// Checked once on launch and never nagged about again. Nothing downloads until
-// the button is pressed: restarting a recorder out from under someone
-// mid-session is worse than running an old version for another day.
+// Nothing downloads until the button is pressed: restarting a recorder out from
+// under someone mid-session is worse than running an old version for another
+// day.
 async function checkForUpdate() {
   const update = await invoke("check_for_update").catch(() => null);
   if (!update) return;
@@ -865,6 +865,12 @@ async function checkForUpdate() {
   $("update-notes").textContent = (update.notes ?? "").split("\n")[0];
   $("update-banner").hidden = false;
 }
+
+// Rechecked while running, not only at launch. This app is built to sit in the
+// tray for weeks, so "we look once on startup" means someone who never reboots
+// never hears about anything - and the banner is the only way most people find
+// out a fix exists.
+const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
 
 $("update-install").addEventListener("click", async () => {
   const button = $("update-install");
@@ -949,6 +955,7 @@ async function boot() {
   // Last, and never blocking startup: an unreachable update server should not
   // delay someone getting to the record button.
   checkForUpdate();
+  setInterval(checkForUpdate, UPDATE_RECHECK_MS);
 }
 
 boot();
