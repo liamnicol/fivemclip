@@ -301,7 +301,18 @@ pub fn start_region_capture(app: AppHandle) {
 /// and doing that on the thread that draws the window froze the whole app.
 pub fn begin_region_capture(app: AppHandle) {
     crate::diagnostics::thread("region-capture", move || {
+        // Reused, not rebuilt. Destroying and recreating a fullscreen
+        // always-on-top webview on every capture raced with itself: the close
+        // is asynchronous, so the next capture could find no window through the
+        // manager while the label was still taken, and build() failed in under
+        // a millisecond. The log showed exactly that - two overlay builds
+        // reported as 0 ms, which nothing real does.
         if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
+            crate::diagnostics::log("reusing the region overlay");
+            // It has to be told, or it shows the frame from last time: the
+            // frozen screenshot is always written to the same path, and the
+            // page only loads it once.
+            let _ = existing.emit("region:open", ());
             let _ = existing.show();
             let _ = existing.set_focus();
             return;
@@ -445,9 +456,14 @@ pub fn cancel_region_capture(app: AppHandle) {
     let _ = std::fs::remove_file(shot::region_frame_path());
 }
 
+/// Hide the overlay rather than destroy it.
+///
+/// Closing it meant building a new fullscreen always-on-top webview for every
+/// region capture, which raced with the previous one's teardown and, over an
+/// evening of captures, is a lot of window churn to no purpose.
 fn close_region_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(REGION_WINDOW) {
-        let _ = window.close();
+        let _ = window.hide();
     }
 }
 

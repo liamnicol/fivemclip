@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.7",
+        lines: &[
+            "The region overlay is reused rather than rebuilt for every capture. Building a fullscreen window each time raced with the previous one closing, and it is the leading suspect for a crash after a long evening of captures.",
+            "A region capture could show you the screen as it was last time. The frozen frame is always written to the same file and the overlay only ever loaded it once.",
+            "The log now says when the app shut down cleanly, so a log that simply stops can be told apart from one that ends.",
+        ],
+    },
+    Release {
         version: "0.2.6",
         lines: &[
             "FiveMClip can record your whole session: it starts when the game launches and saves when it closes, so an evening is on disk rather than only the moments you pressed a key for.",

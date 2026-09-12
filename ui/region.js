@@ -1,4 +1,5 @@
 const { invoke, convertFileSrc } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 
 const frame = document.getElementById("frame");
 const selection = document.getElementById("selection");
@@ -14,10 +15,25 @@ function cancel() {
   invoke("cancel_region_capture");
 }
 
+// Reopened rather than recreated, so the reload is driven by an event.
+listen("region:open", () => load());
+
 async function load() {
+  // The window is reused between captures, so everything from the last one has
+  // to go: a stale selection rectangle, and the guard that stops a second
+  // submission would otherwise make the overlay inert on its second use.
+  submitted = false;
+  origin = null;
+  current = null;
+  selection.hidden = true;
+  sizeLabel.hidden = true;
+  document.getElementById("error").hidden = true;
+
   try {
     const { path } = await invoke("region_frame");
-    frame.src = convertFileSrc(path);
+    // Cache-busted: every capture overwrites the same file, so without this the
+    // overlay shows the screen as it was the last time it opened.
+    frame.src = `${convertFileSrc(path)}?v=${Date.now()}`;
   } catch (error) {
     const box = document.getElementById("error");
     box.textContent = String(error);

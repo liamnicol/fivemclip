@@ -232,10 +232,15 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 // object that the kernel tears down with this process.
                 let app = app.clone();
                 diagnostics::thread("quit", move || {
+                    // So a log that simply stops can be told apart from one
+                    // that ends. Without this line every abrupt ending looks
+                    // identical to someone quitting normally.
+                    diagnostics::log("quitting");
                     let deadline = app.clone();
                     diagnostics::thread("quit-deadline", move || {
                         std::thread::sleep(std::time::Duration::from_secs(20));
                         let _ = deadline;
+                        diagnostics::log("shutdown took too long; exiting anyway");
                         std::process::exit(0);
                     });
 
@@ -253,6 +258,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                         }
                     }
                     state.stop_buffer(true);
+                    diagnostics::log("shut down cleanly");
                     app.exit(0);
                 });
             }

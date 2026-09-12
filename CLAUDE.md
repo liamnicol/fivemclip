@@ -74,6 +74,13 @@ character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as
 input shows a readable label and carries the accelerator in `dataset.combo`;
 `collectSettings` reads the dataset, never the value.
 
+**Long-lived windows are hidden and reused, never closed and rebuilt.** `close()`
+is asynchronous, so the next open can find no window through the manager while
+the label is still taken, and `build()` fails in under a millisecond - a 0 ms
+span in the log is that, not a fast build. Reused windows must be told to
+reload: the editor takes `editor:open`, the region overlay `region:open`. The
+overlay also has to reset its `submitted` guard, or its second use is inert.
+
 **Spawn threads through `diagnostics::thread`, not `std::thread::spawn`.** Every
 log line carries its thread name, and a log full of "unnamed" says nothing about
 which piece of work stalled.
