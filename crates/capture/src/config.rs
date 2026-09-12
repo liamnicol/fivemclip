@@ -70,6 +70,15 @@ pub struct Settings {
     /// Only hold the replay buffer open while one of `trigger_processes` is
     /// running, so we are not burning GPU and disk on someone's desktop all day.
     pub only_while_fivem_running: bool,
+    /// Start a session recording the moment a trigger process appears, and save
+    /// it when that process goes away.
+    ///
+    /// Off by default, deliberately. A session writes without bound - at the
+    /// default 30 Mbps that is about 13 GB an hour - so an evening's play is
+    /// tens of gigabytes. That is a fine trade for someone who wants it and a
+    /// nasty surprise for someone who did not ask.
+    pub auto_session: bool,
+
     /// Executables whose presence means "record now".
     ///
     /// Nothing in the capture path is FiveM-specific - Desktop Duplication
@@ -150,6 +159,7 @@ impl Default for Settings {
             min_free_gb: 10,
             auto_prune: false,
             max_library_gb: 50,
+            auto_session: false,
             only_while_fivem_running: true,
             trigger_processes: vec!["FiveM".into(), "RedM".into()],
             start_minimized: false,
@@ -495,5 +505,29 @@ mod autostart_default_tests {
         let stored = r#"{"autostart": false}"#;
         let restored: Settings = serde_json::from_str(stored).expect("parses");
         assert!(!restored.autostart);
+    }
+}
+
+#[cfg(test)]
+mod auto_session_tests {
+    use super::*;
+
+    /// Recording an entire evening without being asked is not something to opt
+    /// anybody into: it is tens of gigabytes.
+    #[test]
+    fn recording_whole_sessions_is_off_unless_asked_for() {
+        assert!(!Settings::default().auto_session);
+    }
+
+    /// Roughly what an hour costs, so the setting's copy can say so honestly.
+    #[test]
+    fn an_hour_at_the_default_bitrate_is_about_thirteen_gigabytes() {
+        let s = Settings::default();
+        let bytes_per_hour = s.bitrate_kbps as u64 * 1000 / 8 * 3600;
+        assert!(
+            (12..=15).contains(&(bytes_per_hour / 1_000_000_000)),
+            "{} GB/hour",
+            bytes_per_hour / 1_000_000_000
+        );
     }
 }

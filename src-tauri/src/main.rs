@@ -286,9 +286,92 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Start a session when the game appears, save it when the game goes away.
+///
+/// Driven by edges rather than by state, so that stopping a session by hand
+/// mid-game does not have the next tick immediately start another one. Starting
+/// again needs the game to go away and come back.
+fn auto_session(
+    app: &tauri::AppHandle,
+    settings: &fivemclip_capture::Settings,
+    trigger_up: bool,
+    trigger_was_up: bool,
+    want: &mut bool,
+) {
+    let state = app.state::<AppState>();
+    let active = state
+        .recorder
+        .lock()
+        .as_ref()
+        .map(|r| r.session_active())
+        .unwrap_or(false);
+
+    // The game closing saves whatever is running, including a session the user
+    // started by hand. A crash looks the same from here, which is the point:
+    // the recording survives it.
+    if trigger_was_up && !trigger_up {
+        *want = false;
+        if active {
+            let saved = {
+                let mut guard = state.recorder.lock();
+                guard.as_mut().map(|r| r.stop_session())
+            };
+            match saved {
+                Some(Ok(saved)) => {
+                    state.markers.set(&saved.path, saved.markers.clone());
+                    let name = saved
+                        .path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    commands::notify(app, "Session saved", &name);
+                }
+                Some(Err(e)) => commands::notify(app, "Could not save the session", &e),
+                None => {}
+            }
+        }
+        return;
+    }
+
+    if !settings.auto_session {
+        return;
+    }
+    if trigger_up && !trigger_was_up && !active {
+        *want = true;
+    }
+    if !*want || active {
+        return;
+    }
+
+    // start_session refuses unless the buffer is already running, so this may
+    // have to wait a tick for it to come up.
+    let started = {
+        let mut guard = state.recorder.lock();
+        guard.as_mut().map(|r| r.start_session())
+    };
+    // Anything other than success means the buffer is not up yet; try again on
+    // the next tick rather than giving up on the whole game session.
+    if let Some(Ok(())) = started {
+        *want = false;
+        commands::notify(
+            app,
+            "Recording this session",
+            "It saves on its own when the game closes.",
+        );
+    }
+}
+
 /// Keeps the replay buffer aligned with whether FiveM is actually up, so the
 /// app can sit in the tray permanently without burning GPU on the desktop.
 fn spawn_watchdog(app: tauri::AppHandle) {
+    // Whether a trigger process was up on the previous tick, so the game
+    // appearing and disappearing can be acted on as edges rather than states.
+    let mut trigger_was_up = false;
+    // Set when the game appears and cleared once a session is actually running.
+    // The buffer may not be up yet on the tick the game is noticed, and
+    // start_session refuses without it, so this survives to the next tick.
+    let mut want_auto_session = false;
+
     diagnostics::thread("watchdog", move || loop {
         std::thread::sleep(Duration::from_secs(4));
 
@@ -354,8 +437,11 @@ fn spawn_watchdog(app: tauri::AppHandle) {
             }
         }
 
+        // Asked separately from `should_run`: someone can have the buffer
+        // always on and still want whole sessions recorded per game launch.
+        let trigger_up = sysprobe::is_trigger_running(&settings.trigger_processes);
         let should_run = if settings.only_while_fivem_running {
-            sysprobe::is_trigger_running(&settings.trigger_processes)
+            trigger_up
         } else {
             true
         };
@@ -370,5 +456,14 @@ fn spawn_watchdog(app: tauri::AppHandle) {
             // Not a manual stop: the buffer should come back when FiveM does.
             state.stop_buffer(false);
         }
+
+        auto_session(
+            &app,
+            &settings,
+            trigger_up,
+            trigger_was_up,
+            &mut want_auto_session,
+        );
+        trigger_was_up = trigger_up;
     });
 }

@@ -188,6 +188,25 @@ moment, and the trim handles do the rest.
 **Discard** throws the session away without writing it, for when you started one
 by accident.
 
+### Recording every session automatically
+
+Settings → Behaviour → *Record the whole session while one of them is running*
+starts a session the moment a trigger app launches and saves it when that app
+closes. An evening ends up on disk rather than only the moments you thought to
+press a key for.
+
+**Off by default, because it is large.** At the default 30 Mbps that is roughly
+13 GB an hour; the setting shows the figure for your own bitrate. Recording
+stops on its own before the drive fills, and sessions are never deleted by the
+library cap — so the space they take is yours to manage.
+
+A game that crashes still saves its session. From the app's point of view a
+crash and a clean exit look the same: the process went away, so the recording
+gets written.
+
+Stopping a session by hand while the game is still running does not start
+another one. It waits for the game to close and launch again.
+
 ## Your library
 
 The Library tab lists everything the app has saved, newest first, filtered by

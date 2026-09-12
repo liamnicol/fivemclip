@@ -460,6 +460,7 @@ function bindRange(id, outputId, format) {
   input.addEventListener("input", () => {
     update();
     if (id === "buffer_seconds" || id === "bitrate_kbps") updateEstimate();
+    if (id === "bitrate_kbps") updateSessionCost();
   });
   return update;
 }
@@ -484,6 +485,13 @@ const updateMicLabel = bindRange("mic_gain_db", "mic_gain_out", (v) => `${v > 0 
 const updateMinFreeLabel = bindRange("min_free_gb", "min_free_out", (v) => `${v} GB`);
 const updateLibraryCapLabel = bindRange("max_library_gb", "max_library_out", (v) => `${v} GB`);
 const updateSystemLabel = bindRange("system_gain_db", "system_gain_out", (v) => `${v > 0 ? "+" : ""}${v} dB`);
+
+// What an hour of session recording costs, so the setting can say it rather
+// than leaving people to find out from their drive.
+function updateSessionCost() {
+  const bytesPerHour = (Number($("bitrate_kbps").value) * 1000 * 3600) / 8;
+  $("session-hourly").textContent = formatBytes(bytesPerHour);
+}
 
 function updateEstimate() {
   const seconds = Number($("buffer_seconds").value);
@@ -689,6 +697,7 @@ function applySettings(next) {
   $("max_library_gb").value = next.max_library_gb;
   $("prune-cap-field").style.display = next.auto_prune ? "" : "none";
   $("only_while_fivem_running").checked = next.only_while_fivem_running;
+  $("auto_session").checked = next.auto_session;
   triggers = [...(next.trigger_processes ?? [])];
   renderTriggers();
   $("autostart").checked = next.autostart;
@@ -703,6 +712,7 @@ function applySettings(next) {
   updateMinFreeLabel();
   updateLibraryCapLabel();
   updateEstimate();
+  updateSessionCost();
   $("mic-gain-field").style.display = next.mic_mode === "off" ? "none" : "";
 
   $("hint-clip").textContent = prettyCombo(next.hotkey_save_clip) || "no hotkey";
@@ -793,6 +803,7 @@ function collectSettings() {
     auto_prune: $("auto_prune").checked,
     max_library_gb: Number($("max_library_gb").value),
     only_while_fivem_running: $("only_while_fivem_running").checked,
+    auto_session: $("auto_session").checked,
     trigger_processes: triggers,
     autostart: $("autostart").checked,
     start_minimized: $("start_minimized").checked,

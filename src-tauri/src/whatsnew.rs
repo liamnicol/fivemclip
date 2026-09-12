@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.6",
+        lines: &[
+            "FiveMClip can record your whole session: it starts when the game launches and saves when it closes, so an evening is on disk rather than only the moments you pressed a key for.",
+            "Off by default, in Settings under Behaviour. It is large - the setting tells you how many gigabytes an hour at your current bitrate.",
+            "A game that crashes saves the session rather than losing it, because from here a crash looks the same as closing.",
+        ],
+    },
+    Release {
         version: "0.2.5",
         lines: &[
             "Settings apply as you change them. The Save settings button is gone, and so is changing something, walking away and finding it never took.",
