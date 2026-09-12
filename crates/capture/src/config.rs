@@ -12,6 +12,49 @@ pub enum MicMode {
     Mixed,
 }
 
+/// An S3-compatible bucket the user owns.
+///
+/// Their storage, their bill, their credentials. The alternative - us hosting
+/// clips - means accounts, subscriptions, quotas, deletion policies and being
+/// answerable for other people's video, none of which this app is.
+///
+/// Every field is empty until configured, and `is_configured` is what gates the
+/// feature rather than an extra tick box that can disagree with it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct S3Target {
+    /// e.g. https://<account>.r2.cloudflarestorage.com
+    pub endpoint: String,
+    pub bucket: String,
+    /// "auto" for R2. S3 itself wants a real region, and the signature carries
+    /// it, so a wrong one is rejected rather than ignored.
+    pub region: String,
+    pub access_key_id: String,
+    /// A secret in the same way the webhooks are, except this one can write to
+    /// and delete from their bucket.
+    pub secret_access_key: String,
+    /// The domain in front of the bucket, if there is one. A bucket endpoint is
+    /// not normally readable by whoever is sent the link.
+    pub public_base: String,
+    /// Key prefix, so clips do not land in the root of a shared bucket.
+    pub prefix: String,
+}
+
+impl S3Target {
+    /// Everything a signed PUT needs. `public_base` and `prefix` are optional,
+    /// so they are not part of this.
+    pub fn is_configured(&self) -> bool {
+        [
+            &self.endpoint,
+            &self.bucket,
+            &self.access_key_id,
+            &self.secret_access_key,
+        ]
+        .iter()
+        .all(|f| !f.trim().is_empty())
+    }
+}
+
 /// A rectangle over the frame, as fractions of its width and height.
 ///
 /// Fractions rather than pixels so one saved region stays correct across a
@@ -198,6 +241,9 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub discord_limit_mb: u32,
 
+    /// Where uploads go, when the user has their own bucket.
+    pub s3: S3Target,
+
     /// Black out the chat box when a clip is exported.
     ///
     /// Off by default. It costs a re-encode and it is irreversible, so it is
@@ -254,6 +300,7 @@ impl Default for Settings {
             hotkey_marker: "F7".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
+            s3: S3Target::default(),
             hide_chat: false,
             chat_region: None,
             discord_targets: Vec::new(),
@@ -348,6 +395,25 @@ impl Settings {
         // feature working while hiding nothing.
         if let Some(mut region) = self.chat_region {
             self.chat_region = region.tidy().then_some(region);
+        }
+
+        // Trimmed on the way in: a pasted endpoint or key with a trailing
+        // newline signs correctly and then fails against a host that does not
+        // exist, which is a miserable thing to debug from an error message.
+        for field in [
+            &mut self.s3.endpoint,
+            &mut self.s3.bucket,
+            &mut self.s3.region,
+            &mut self.s3.access_key_id,
+            &mut self.s3.secret_access_key,
+            &mut self.s3.public_base,
+            &mut self.s3.prefix,
+        ] {
+            *field = field.trim().to_string();
+        }
+        if self.s3.region.is_empty() {
+            // What R2 wants, and the most likely bucket behind this.
+            self.s3.region = "auto".into();
         }
 
         self.migrate_discord();

@@ -307,6 +307,58 @@
           </fieldset>
 
           <fieldset>
+            <legend>Your own cloud storage</legend>
+            <small class="muted">
+              Optional, and it is your bucket rather than ours — your storage,
+              your bill, your keys. Anything S3-compatible works;
+              <a href="#" data-external="https://developers.cloudflare.com/r2/">Cloudflare
+              R2</a> is the one worth using, because it charges nothing to serve
+              what you upload and serving clips is almost all of the cost. A few
+              pence a month for a folder of clips, paid to them, not to us.
+            </small>
+            <label class="field">
+              <span>Endpoint</span>
+              <input type="text" id="s3_endpoint" placeholder="https://<account>.r2.cloudflarestorage.com" autocomplete="off" />
+            </label>
+            <div class="row">
+              <label class="field">
+                <span>Bucket</span>
+                <input type="text" id="s3_bucket" placeholder="clips" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Region</span>
+                <input type="text" id="s3_region" placeholder="auto" autocomplete="off" />
+              </label>
+            </div>
+            <label class="field">
+              <span>Access key ID</span>
+              <input type="text" id="s3_access_key_id" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Secret access key</span>
+              <input type="password" id="s3_secret_access_key" autocomplete="off" />
+              <small class="muted">
+                This can write to and delete from that bucket. It stays on this
+                PC and goes nowhere but your provider.
+              </small>
+            </label>
+            <label class="field">
+              <span>Public link domain</span>
+              <input type="text" id="s3_public_base" placeholder="https://clips.example.com" autocomplete="off" />
+              <small class="muted">
+                The domain you have put in front of the bucket. Without one the
+                links point at the endpoint, which only works if you have made
+                the bucket publicly readable. Remember that an unguessable link
+                is still a public link.
+              </small>
+            </label>
+            <label class="field">
+              <span>Folder inside the bucket</span>
+              <input type="text" id="s3_prefix" placeholder="FiveMClip" autocomplete="off" />
+            </label>
+          </fieldset>
+
+          <fieldset>
             <legend>Disk space</legend>
             <label class="field">
               <span>Stop recording when free space drops below</span>

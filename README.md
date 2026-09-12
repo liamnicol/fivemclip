@@ -329,6 +329,26 @@ The key is yours and is stored only on your PC. FiveMClip deliberately does not
 ship a shared key — a key baked into a distributed binary gets extracted and
 rate-limited within a week, and then it stops working for everybody.
 
+### Your own cloud storage
+
+Optional, and there is no FiveMClip account involved: you point the app at a
+bucket you own, and the storage bill is yours and tiny. Anything S3-compatible
+works — **Cloudflare R2** is the one worth using, because it charges nothing to
+serve what you upload, and serving clips is where the cost of sharing them
+actually is.
+
+1. Make an R2 bucket, and an API token with **Object Read & Write** on it.
+2. Paste the endpoint, bucket, access key ID and secret into Settings.
+3. Optionally put a domain in front of the bucket and give it as the public link
+   domain — a bucket endpoint is not readable by whoever you send the link to.
+
+A **To cloud** button then appears on every clip and screenshot, and copies the
+link when it finishes. No 25 MB ceiling, which is the main reason to bother.
+
+The secret can write to and delete from that bucket. It stays on your PC and
+goes nowhere but your provider. And an unguessable link is still a public link:
+anyone it is forwarded to can watch the clip.
+
 ### Updates
 
 Checked on launch and every six hours after it, and nothing downloads until you

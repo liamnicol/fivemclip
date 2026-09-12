@@ -9,6 +9,7 @@ mod hotkeys;
 mod library;
 mod links;
 mod markers;
+mod s3;
 mod state;
 mod updates;
 mod upload;
@@ -98,6 +99,8 @@ fn main() {
             commands::open_output_folder,
             commands::open_log_folder,
             commands::upload_imgbb,
+            commands::upload_to_bucket,
+            commands::bucket_ready,
             commands::youtube_handoff,
             commands::send_to_discord,
             commands::discord_channels,

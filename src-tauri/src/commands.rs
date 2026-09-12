@@ -1091,6 +1091,43 @@ pub async fn upload_imgbb(
     Ok(result)
 }
 
+/// Is the user's own bucket set up? Decides whether the Library offers it.
+#[tauri::command]
+pub fn bucket_ready(state: State<AppState>) -> bool {
+    state.settings.lock().s3.is_configured()
+}
+
+/// Upload a file to the user's own bucket and return the link.
+///
+/// The link is remembered against the file in the same index the ImgBB ones
+/// live in, so the Library can offer to copy it rather than upload twice.
+#[tauri::command]
+pub async fn upload_to_bucket(app: AppHandle, path: String) -> Result<String, String> {
+    let source = PathBuf::from(path);
+    let target = {
+        let state = app.state::<AppState>();
+        let settings = state.settings.lock();
+        if !library::is_managed(&settings, &source) {
+            return Err("That file is not in the FiveMClip folders.".into());
+        }
+        settings.s3.clone()
+    };
+
+    let url = crate::s3::put(&target, &source).await?;
+    app.state::<AppState>().links.record(
+        &source,
+        &ImgbbResult {
+            url: url.clone(),
+            display_url: url.clone(),
+            // Nothing to delete through: an object in the user's own bucket is
+            // removed from that bucket, not through a link we hold.
+            delete_url: String::new(),
+        },
+    );
+    library_changed(&app);
+    Ok(url)
+}
+
 /// Post a file to the user's Discord channel.
 #[tauri::command]
 pub async fn send_to_discord(app: AppHandle, path: String, message: String) -> Result<(), String> {

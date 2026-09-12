@@ -6,6 +6,8 @@ let settings = null;
 let libraryItems = [];
 /** Channels to post to, without their webhook URLs. */
 let discordChannels = [];
+/** Whether the user's own bucket is set up, so the Library can offer it. */
+let bucketReady = false;
 let libraryFilter = "all";
 
 /* ---------------- helpers ---------------- */
@@ -309,9 +311,10 @@ listen("settings:changed", async () => {
 async function refreshLibrary() {
   // Fetched alongside the items: which channels exist decides whether each card
   // offers the button at all.
-  [libraryItems, discordChannels] = await Promise.all([
+  [libraryItems, discordChannels, bucketReady] = await Promise.all([
     invoke("library_items").catch(() => []),
     invoke("discord_channels").catch(() => []),
+    invoke("bucket_ready").catch(() => false),
   ]);
   renderLibrary();
 }
@@ -406,15 +409,24 @@ function renderLibrary() {
       ? `<button class="btn" data-act="discord">To Discord${fits.length > 1 ? " ▾" : ""}</button>`
       : "";
 
+    // Offered for clips as well as screenshots, and for anything too big for
+    // Discord: a bucket has no 25 MB ceiling, which is most of the point.
+    const bucket =
+      bucketReady && !item.link
+        ? `<button class="btn" data-act="bucket">To cloud</button>`
+        : "";
+
     const share = isVideo
       ? `<button class="btn" data-act="trim">Trim</button>
          ${discord}
+         ${bucket}
+         ${item.link ? `<button class="btn" data-act="copy-link">Copy link</button>` : ""}
          <button class="btn" data-act="youtube">To YouTube</button>`
       : `<button class="btn" data-act="edit">Edit</button>
          ${
            item.link
              ? `<button class="btn" data-act="copy-link">Copy link</button>`
-             : `<button class="btn" data-act="imgbb">Upload</button>`
+             : `<button class="btn" data-act="imgbb">Upload</button>${bucket}`
          }
          ${discord}`;
 
@@ -501,6 +513,20 @@ async function handleItemAction(action, item, button) {
       } finally {
         button.disabled = false;
         button.textContent = label;
+      }
+      break;
+    }
+    case "bucket": {
+      button.disabled = true;
+      button.textContent = "Uploading…";
+      try {
+        const url = await call("upload_to_bucket", { path: item.path });
+        await invoke("copy_text", { text: url }).catch(() => {});
+        toast("Uploaded — link copied");
+        refreshLibrary();
+      } finally {
+        button.disabled = false;
+        button.textContent = "To cloud";
       }
       break;
     }
@@ -851,6 +877,10 @@ function applySettings(next) {
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
   renderDiscordChannels(next.discord_targets ?? []);
   $("hide_chat").checked = next.hide_chat;
+  for (const [id, value] of Object.entries(next.s3 ?? {})) {
+    const field = document.getElementById(`s3_${id}`);
+    if (field) field.value = value;
+  }
   paintChatRegion(next.chat_region);
   $("min_free_gb").value = next.min_free_gb;
   $("auto_prune").checked = next.auto_prune;
@@ -958,6 +988,15 @@ function collectSettings() {
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
     hide_chat: $("hide_chat").checked,
+    s3: {
+      endpoint: $("s3_endpoint").value.trim(),
+      bucket: $("s3_bucket").value.trim(),
+      region: $("s3_region").value.trim(),
+      access_key_id: $("s3_access_key_id").value.trim(),
+      secret_access_key: $("s3_secret_access_key").value.trim(),
+      public_base: $("s3_public_base").value.trim(),
+      prefix: $("s3_prefix").value.trim(),
+    },
     // Never collected from the page: the region is set by dragging over a
     // frozen frame and saved by the backend, so echoing it back through every
     // settings write is only a way to lose it.

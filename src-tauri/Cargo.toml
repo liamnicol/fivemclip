@@ -34,5 +34,14 @@ chrono = "0.4"
 base64 = "0.22"
 # native-tls resolves to schannel on Windows: the OS trust store, no bundled
 # root certificates to go stale, and no C toolchain in the build.
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "native-tls"] }
 tokio = { version = "1", features = ["fs"] }
+# Streams a clip into the request body instead of reading it all into memory:
+# a session recording can be several gigabytes.
+tokio-util = { version = "0.7", default-features = false, features = ["io"] }
+# SigV4 by hand rather than an AWS SDK. The signing is one PUT, about a hundred
+# lines, and cross-checked against botocore in the tests - where the SDK would
+# add a few hundred crates to a build that currently has none of them.
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"

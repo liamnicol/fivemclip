@@ -108,6 +108,20 @@ rate it is given, so 1 fps means waiting a full second with a Desktop
 Duplication open - which the game in front of it feels as a freeze.
 `shot::GRAB_FPS` is that rate and has a test.
 
+**SigV4 signs the `Host` header, port included.** `Url::port()` is `None` for
+the scheme's default port, which is exactly when HTTP omits it from the header -
+so the signed host is `host` on 443 and `host:9000` otherwise. Signing the bare
+hostname worked against R2 and failed against every bucket on a custom port.
+Caught end to end against a server that recomputed the signature, not by
+reading the code.
+
+**The S3 signer is cross-checked against botocore, not against the spec.**
+`s3::sign_tests` pins signatures that botocore's `S3SigV4Auth` produced for the
+same requests; `tools/sigv4-ref.py` regenerates them. Note S3 encodes the
+path **once** - the generic SigV4 rule encodes it twice, and using that here
+makes every key with a space in it fail. `s3::live_tests` will do a real upload
+against a real bucket when `FIVEMCLIP_TEST_S3_*` are set.
+
 **An update check has more than two outcomes, and silence is not an answer.**
 `check_for_update` returns a `Status`: up to date, available, unreachable,
 portable, unsupported. It used to return `Option`, so four of those showed

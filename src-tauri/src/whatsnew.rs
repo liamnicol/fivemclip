@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.11",
+        lines: &[
+            "Upload clips to your own cloud storage, with no Discord size limit in the way. Settings \u{2192} Your own cloud storage.",
+            "It is your bucket, not ours: your storage, your bill, your keys. Cloudflare R2 is the one to use - it charges nothing to serve what you upload, which is where the cost of sharing clips actually is. Pennies a month for a folder of clips.",
+            "Works with anything S3-compatible. A \"To cloud\" button appears on every clip and screenshot once it is set up, and copies the link when it is done.",
+        ],
+    },
+    Release {
         version: "0.2.10",
         lines: &[
             "A Check for updates button in Settings, which tells you what it found - including when you are already up to date, when GitHub could not be reached, and when a copy cannot update itself at all.",

@@ -264,6 +264,11 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 }
 .menu-item:hover { background: var(--panel-2); }
 
+/* Two fields side by side, stacking when there is no room for both. */
+.row { display: flex; gap: 12px; }
+.row > .field { flex: 1; min-width: 0; }
+@media (max-width: 620px) { .row { flex-direction: column; } }
+
 /* ---------- discord channels ---------- */
 
 .channel {
