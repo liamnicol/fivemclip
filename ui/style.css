@@ -469,6 +469,11 @@ kbd {
 
 /* ---------- update banner ---------- */
 
+/* Sits between the header and <main>, outside every view, so it shows whatever
+   tab you are on. It therefore has to supply the gutter and the centring that
+   `main`/`.view` used to give it. */
+#update-banner { max-width: 900px; margin: 24px auto -4px; width: calc(100% - 48px); }
+
 .update {
   display: flex;
   align-items: center;

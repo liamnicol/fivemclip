@@ -108,6 +108,18 @@ rate it is given, so 1 fps means waiting a full second with a Desktop
 Duplication open - which the game in front of it feels as a freeze.
 `shot::GRAB_FPS` is that rate and has a test.
 
+**An update check has more than two outcomes, and silence is not an answer.**
+`check_for_update` returns a `Status`: up to date, available, unreachable,
+portable, unsupported. It used to return `Option`, so four of those showed
+nothing and "the check does not work" was indistinguishable from "there is
+nothing to report". The banner still only appears for `Available`; the Settings
+button reports all of them.
+
+**The update banner is a sibling of `<main>`, not part of a view.** It lived
+inside `#view-record`, so it was `display: none` from Library and Settings -
+where people spend most of their time. It supplies its own gutter and centring
+because it no longer inherits them.
+
 **The updater follows GitHub's *latest release*, which is by publish date, not
 version.** Publishing an older tag after a newer one repoints every installed
 copy at an older manifest, which reads to the updater as "up to date" for ever.

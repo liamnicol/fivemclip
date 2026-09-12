@@ -1100,13 +1100,53 @@ function showSetup() {
 // under someone mid-session is worse than running an old version for another
 // day.
 async function checkForUpdate() {
-  const update = await invoke("check_for_update").catch(() => null);
-  if (!update) return;
+  const check = await invoke("check_for_update").catch(() => null);
+  // The banner is for one outcome only. Being offline is not something to put
+  // in front of someone who is about to record.
+  if (check?.status !== "available") return;
 
-  $("update-version").textContent = update.version;
-  $("update-notes").textContent = (update.notes ?? "").split("\n")[0];
+  $("update-version").textContent = check.version;
+  $("update-notes").textContent = (check.notes ?? "").split("\n")[0];
   $("update-banner").hidden = false;
 }
+
+/** What a check the user asked for says. Every outcome gets an answer: a button
+ *  that sometimes does nothing visible is why this was reported as broken. */
+function describeCheck(check) {
+  if (!check) return "Could not run the check. See the log.";
+  switch (check.status) {
+    case "available":
+      return `${check.version} is available — see the banner at the top.`;
+    case "current":
+      return `Up to date. You are on ${check.current}.`;
+    case "unreachable":
+      return "Could not reach GitHub to ask. Check your connection and try again.";
+    case "portable":
+      return `This is a portable copy, so it cannot update itself — download the new zip instead. You are on ${check.current}.`;
+    case "unsupported":
+      return "This build cannot update itself. Reinstall from the latest release.";
+    default:
+      return `Unexpected answer: ${check.status}`;
+  }
+}
+
+$("check-updates").addEventListener("click", async () => {
+  const button = $("check-updates");
+  const state = $("update-state");
+  button.disabled = true;
+  state.textContent = "Checking…";
+  try {
+    const check = await invoke("check_for_update").catch(() => null);
+    state.textContent = describeCheck(check);
+    if (check?.status === "available") {
+      $("update-version").textContent = check.version;
+      $("update-notes").textContent = (check.notes ?? "").split("\n")[0];
+      $("update-banner").hidden = false;
+    }
+  } finally {
+    button.disabled = false;
+  }
+});
 
 // Rechecked while running, not only at launch. This app is built to sit in the
 // tray for weeks, so "we look once on startup" means someone who never reboots

@@ -24,15 +24,16 @@
       </div>
     </header>
 
+    <div class="update" id="update-banner" hidden>
+      <div>
+        <strong>Version <span id="update-version"></span> is available</strong>
+        <p class="muted" id="update-notes"></p>
+      </div>
+      <button class="btn btn-primary" id="update-install">Update and restart</button>
+    </div>
+
     <main>
       <section class="view is-active" id="view-record">
-        <div class="update" id="update-banner" hidden>
-          <div>
-            <strong>Version <span id="update-version"></span> is available</strong>
-            <p class="muted" id="update-notes"></p>
-          </div>
-          <button class="btn btn-primary" id="update-install">Update and restart</button>
-        </div>
         <div id="alerts"></div>
 
         <div class="hero">
@@ -273,6 +274,14 @@
                 different places. Each URL is a password &mdash; anyone who has it
                 can post there.
               </small>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Updates</legend>
+            <div class="field">
+              <button type="button" class="btn btn-ghost" id="check-updates">Check for updates</button>
+              <small class="muted" id="update-state"></small>
             </div>
           </fieldset>
 

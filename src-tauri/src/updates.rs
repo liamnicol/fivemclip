@@ -9,10 +9,51 @@ use serde::Serialize;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
+/// What a check actually found.
+///
+/// Four outcomes used to collapse into one `None`, and the banner showed
+/// nothing for all of them: up to date, offline, an updater that could not be
+/// built, and a portable copy that can never update at all. Silence in every
+/// case is indistinguishable from the check being broken - which is exactly how
+/// it was reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    /// A newer release exists.
+    Available,
+    /// This is the newest release.
+    Current,
+    /// The update server could not be reached. Usually just offline.
+    Unreachable,
+    /// A portable copy. Updating would install a second copy elsewhere.
+    Portable,
+    /// The updater could not be built - no signing key, or a broken config.
+    Unsupported,
+}
+
 #[derive(Debug, Clone, Serialize)]
-pub struct UpdateInfo {
-    pub version: String,
+pub struct UpdateCheck {
+    pub status: Status,
+    /// The version running right now, so a manual check can say so.
+    pub current: String,
+    /// The newer version, when there is one.
+    pub version: Option<String>,
     pub notes: Option<String>,
+    /// Why it could not be checked. For the log and for a manual check, never
+    /// for the banner.
+    pub detail: Option<String>,
+}
+
+impl UpdateCheck {
+    fn new(app: &AppHandle, status: Status) -> Self {
+        Self {
+            status,
+            current: app.package_info().version.to_string(),
+            version: None,
+            notes: None,
+            detail: None,
+        }
+    }
 }
 
 /// A portable copy must not offer an update.
@@ -25,35 +66,46 @@ fn portable() -> bool {
     fivemclip_capture::config::is_portable()
 }
 
-/// Is there a newer release? `None` means up to date, or that the check could
-/// not be made - an offline user should see nothing, not an error.
+/// Look for a newer release, and say what was found either way.
+///
+/// The caller decides what to do with each outcome: the banner only ever
+/// appears for `Available`, while a check the user asked for reports all of
+/// them. Pressing a button and getting nothing back is the same bug twice.
 #[tauri::command]
-pub async fn check_for_update(app: AppHandle) -> Option<UpdateInfo> {
+pub async fn check_for_update(app: AppHandle) -> UpdateCheck {
     if portable() {
-        return None;
+        return UpdateCheck::new(&app, Status::Portable);
     }
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
             crate::diagnostics::log(format!("updater unavailable: {e}"));
-            return None;
+            let mut check = UpdateCheck::new(&app, Status::Unsupported);
+            check.detail = Some(e.to_string());
+            return check;
         }
     };
 
     match updater.check().await {
         Ok(Some(update)) => {
             crate::diagnostics::log(format!("update available: {}", update.version));
-            Some(UpdateInfo {
-                version: update.version.clone(),
-                notes: update.body.clone(),
-            })
+            let mut check = UpdateCheck::new(&app, Status::Available);
+            check.version = Some(update.version.clone());
+            check.notes = update.body.clone();
+            check
         }
-        Ok(None) => None,
+        Ok(None) => {
+            crate::diagnostics::log("update check: already current");
+            UpdateCheck::new(&app, Status::Current)
+        }
         Err(e) => {
-            // Being offline is the common case here, and it is not a problem
-            // worth putting in front of someone about to record.
+            // Being offline is the common case, and it is not worth putting in
+            // front of someone about to record - so the banner ignores this.
+            // A check they pressed a button for says so.
             crate::diagnostics::log(format!("update check failed: {e}"));
-            None
+            let mut check = UpdateCheck::new(&app, Status::Unreachable);
+            check.detail = Some(e.to_string());
+            check
         }
     }
 }

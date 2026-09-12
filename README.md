@@ -329,6 +329,16 @@ The key is yours and is stored only on your PC. FiveMClip deliberately does not
 ship a shared key — a key baked into a distributed binary gets extracted and
 rate-limited within a week, and then it stops working for everybody.
 
+### Updates
+
+Checked on launch and every six hours after it, and nothing downloads until you
+press the button — restarting a recorder out from under someone mid-session is
+worse than running yesterday's version for another day.
+
+**Settings → Updates → Check for updates** asks straight away and says what came
+back: up to date, a new version, GitHub unreachable, or a portable copy that
+cannot update itself. A portable copy updates by downloading the new zip.
+
 ### Hiding the chat
 
 Most RP servers will not let you post a clip showing staff chat, reports or OOC.

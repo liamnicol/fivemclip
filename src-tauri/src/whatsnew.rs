@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.10",
+        lines: &[
+            "A Check for updates button in Settings, which tells you what it found - including when you are already up to date, when GitHub could not be reached, and when a copy cannot update itself at all.",
+            "The update banner now shows whatever tab you are on. It was inside the Record view, so it was invisible from Library and Settings.",
+            "Between them, that was the whole of \"update checking does not work\": four different outcomes all showed nothing, on a tab you were probably not looking at.",
+        ],
+    },
+    Release {
         version: "0.2.9",
         lines: &[
             "Black out the chat box in trimmed clips, for servers whose rules do not allow showing staff chat, reports or OOC. Settings \u{2192} Hiding the chat, then drag over the chat box while it has something in it.",
