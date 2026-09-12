@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use crate::config::Settings;
+use crate::config::{ChatRegion, Settings};
 use crate::ffmpeg::{self, Pipeline};
 
 /// Refuse to produce a clip shorter than this. Below about a quarter of a
@@ -43,6 +43,27 @@ pub struct Request {
     /// than by cutting more. Ignored when `fast` is set, because a stream copy
     /// cannot change the bitrate it is copying.
     pub fit_bytes: Option<u64>,
+    /// Cover this part of every frame with solid black - the chat box, for a
+    /// server whose rules do not allow showing staff chat.
+    pub hide_chat: Option<ChatRegion>,
+}
+
+/// The filter that covers `region` on every frame.
+///
+/// Solid fill rather than a blur, and not for looks. A blur applied to *moving*
+/// footage is weaker than the same blur on a screenshot: the text underneath is
+/// static while the encoder's noise is not, so averaging enough frames together
+/// pulls a legible edge back out of a gentle blur. The screenshot editor can
+/// afford to blur because there is only ever one frame to average. Here the
+/// only honest answer is pixels that no longer contain the text at all.
+///
+/// The geometry is expressed against ffmpeg's own input size so one saved
+/// region is right whatever the clip was recorded or scaled to.
+pub fn chat_box_filter(region: &ChatRegion) -> String {
+    format!(
+        "drawbox=x=in_w*{:.4}:y=in_h*{:.4}:w=in_w*{:.4}:h=in_h*{:.4}:color=black:t=fill",
+        region.x, region.y, region.w, region.h
+    )
 }
 
 /// Audio is a rounding error next to video, but at the bitrates a size limit
@@ -84,6 +105,7 @@ pub fn trim(
         replace,
         fast,
         fit_bytes,
+        hide_chat,
     } = *request;
     let duration = end - start;
     if !start.is_finite() || !end.is_finite() || start < 0.0 {
@@ -93,6 +115,18 @@ pub fn trim(
         return Err(format!(
             "That selection is {duration:.2} seconds long. Drag the handles further apart."
         ));
+    }
+    // Refused rather than quietly re-encoded or quietly skipped. A stream copy
+    // cannot paint over anything, so "fast" and "hide the chat" are a request
+    // for a file that cannot exist - and of the two ways to resolve it on the
+    // user's behalf, one throws away the speed they asked for and the other
+    // hands back a clip still showing what they were covering up.
+    if fast && hide_chat.is_some() {
+        return Err(
+            "Hiding the chat means re-encoding, which a fast trim does not do. \
+             Turn Fast off, or turn off Hide chat."
+                .into(),
+        );
     }
     if !source.is_file() {
         return Err("That clip is not there any more.".into());
@@ -142,6 +176,7 @@ pub fn trim(
             source,
             start,
             duration,
+            hide_chat.as_ref(),
             &scratch,
         ) {
             Ok(()) => {
@@ -198,10 +233,13 @@ fn run(
     source: &Path,
     start: f64,
     duration: f64,
+    hide_chat: Option<&ChatRegion>,
     out: &Path,
 ) -> Result<(), String> {
     let output = ffmpeg::command(ffmpeg_path)
-        .args(args(settings, encoder, source, start, duration, out))
+        .args(args(
+            settings, encoder, source, start, duration, hide_chat, out,
+        ))
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -216,12 +254,14 @@ fn run(
 /// `-ss` before `-i` seeks by keyframe and then decodes forward to the exact
 /// frame, which is both fast and accurate. `-t` after the input keeps the
 /// duration relative to that seek rather than to the original timeline.
+#[allow(clippy::too_many_arguments)]
 fn args(
     settings: &Settings,
     encoder: Option<&str>,
     source: &Path,
     start: f64,
     duration: f64,
+    hide_chat: Option<&ChatRegion>,
     out: &Path,
 ) -> Vec<String> {
     let bitrate = format!("{}k", settings.bitrate_kbps);
@@ -241,6 +281,9 @@ fn args(
     match encoder {
         None => a.extend(["-c".into(), "copy".into()]),
         Some(encoder) => {
+            if let Some(region) = hide_chat {
+                a.extend(["-vf".into(), chat_box_filter(region)]);
+            }
             a.extend(["-c:v".into(), encoder.into()]);
             // Quality-oriented rather than the capture path's constant bitrate:
             // a trim is not writing to a ring buffer, so there is no reason to
@@ -296,6 +339,7 @@ mod tests {
             Path::new("clip.mp4"),
             12.5,
             8.0,
+            None,
             Path::new("out.mp4"),
         );
         let ss = a.iter().position(|x| x == "-ss").unwrap();
@@ -343,6 +387,7 @@ mod tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .unwrap_err();
@@ -358,6 +403,14 @@ mod ffmpeg_tests {
 
     fn ffmpeg_for_test() -> Option<PathBuf> {
         std::env::var_os("FIVEMCLIP_TEST_FFMPEG").map(PathBuf::from)
+    }
+
+    /// The sample clip these tests cut up. Missing is a skip, not a failure:
+    /// setting only FIVEMCLIP_TEST_FFMPEG used to panic three tests on an
+    /// `.expect`, which reads as the trimmer being broken rather than as the
+    /// test being unconfigured.
+    fn clip_for_test() -> Option<String> {
+        std::env::var("FIVEMCLIP_TEST_CLIP").ok()
     }
 
     fn duration_of(ffmpeg: &Path, file: &Path) -> f64 {
@@ -400,12 +453,12 @@ mod ffmpeg_tests {
         let dir = std::env::temp_dir().join("fivemclip-trim-test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let Some(clip) = clip_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_CLIP");
+            return;
+        };
         let source = dir.join("Clip.mp4");
-        std::fs::copy(
-            std::env::var("FIVEMCLIP_TEST_CLIP").expect("FIVEMCLIP_TEST_CLIP"),
-            &source,
-        )
-        .unwrap();
+        std::fs::copy(clip, &source).unwrap();
 
         let settings = Settings {
             bitrate_kbps: 4_000,
@@ -422,6 +475,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .expect("trim succeeds");
@@ -445,12 +499,12 @@ mod ffmpeg_tests {
         let dir = std::env::temp_dir().join("fivemclip-trim-replace");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let Some(clip) = clip_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_CLIP");
+            return;
+        };
         let source = dir.join("Clip.mp4");
-        std::fs::copy(
-            std::env::var("FIVEMCLIP_TEST_CLIP").expect("FIVEMCLIP_TEST_CLIP"),
-            &source,
-        )
-        .unwrap();
+        std::fs::copy(clip, &source).unwrap();
 
         let settings = Settings::default();
         let out = trim(
@@ -464,6 +518,7 @@ mod ffmpeg_tests {
                 replace: true,
                 fast: false,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .expect("trim succeeds");
@@ -515,7 +570,10 @@ mod ffmpeg_tests {
         let dir = std::env::temp_dir().join("fivemclip-trim-fast");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let clip = std::env::var("FIVEMCLIP_TEST_CLIP").expect("FIVEMCLIP_TEST_CLIP");
+        let Some(clip) = clip_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_CLIP");
+            return;
+        };
 
         let settings = Settings {
             bitrate_kbps: 4_000,
@@ -536,6 +594,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: true,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .unwrap();
@@ -553,6 +612,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .unwrap();
@@ -571,6 +631,126 @@ mod ffmpeg_tests {
         assert!(
             exact_raw < 7.35,
             "an exact trim must contain nothing but the selection, got {exact_raw:.2}s"
+        );
+    }
+
+    /// The average colour of `region` in the first frame, as RGB.
+    ///
+    /// Cropped and scaled to a single pixel by ffmpeg and read as three raw
+    /// bytes, which needs no image decoder on this side.
+    fn region_average(ffmpeg: &Path, file: &Path, region: &ChatRegion) -> [u8; 3] {
+        let out = ffmpeg::command(ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                &file.to_string_lossy(),
+                "-vf",
+                &format!(
+                    "crop=in_w*{:.4}:in_h*{:.4}:in_w*{:.4}:in_h*{:.4},scale=1:1",
+                    region.w, region.h, region.x, region.y
+                ),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ])
+            .output()
+            .expect("ffmpeg runs");
+        let pixel = &out.stdout;
+        assert!(
+            pixel.len() >= 3,
+            "expected a pixel, got {} bytes",
+            pixel.len()
+        );
+        [pixel[0], pixel[1], pixel[2]]
+    }
+
+    /// The claim the whole feature rests on: after a trim that hides the chat,
+    /// the chat is not in the picture any more.
+    ///
+    /// Measured rather than asserted from the argument list, and with a control
+    /// on the source - a test that only checks the output is black would still
+    /// pass if the region were black to begin with and the filter did nothing.
+    #[test]
+    fn hiding_the_chat_really_removes_it() {
+        let Some(ffmpeg) = ffmpeg_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_FFMPEG");
+            return;
+        };
+        let dir = std::env::temp_dir().join("fivemclip-trim-chat");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("Clip.mp4");
+
+        // A stand-in for a chat box: a panel of text over the bottom left.
+        let built = ffmpeg::command(&ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=1280x720:rate=30:duration=3",
+                "-vf",
+                "drawbox=x=0:y=500:w=500:h=180:color=gray@0.6:t=fill,\
+                 drawtext=text='ADMIN CHAT':x=20:y=560:fontsize=48:fontcolor=white",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                &source.to_string_lossy(),
+            ])
+            .output()
+            .expect("ffmpeg runs");
+        if !built.status.success() {
+            eprintln!("skipped: this ffmpeg cannot draw text");
+            return;
+        }
+
+        let region = ChatRegion {
+            x: 0.0,
+            y: 0.6944,
+            w: 0.3906,
+            h: 0.25,
+        };
+
+        // The control. If this is already dark the test proves nothing.
+        let before = region_average(&ffmpeg, &source, &region);
+        assert!(
+            before.iter().any(|&c| c > 40),
+            "the source chat box should be visible, measured {before:?}"
+        );
+
+        let out = trim(
+            &ffmpeg,
+            &Settings {
+                bitrate_kbps: 8_000,
+                ..Default::default()
+            },
+            None,
+            &source,
+            &Request {
+                start: 0.0,
+                end: 2.0,
+                replace: false,
+                fast: false,
+                fit_bytes: None,
+                hide_chat: Some(region),
+            },
+        )
+        .expect("trim succeeds");
+
+        let after = region_average(&ffmpeg, &out, &region);
+        assert!(
+            after.iter().all(|&c| c < 16),
+            "the chat box should be solid black, measured {after:?}"
         );
     }
 
@@ -600,6 +780,7 @@ mod ffmpeg_tests {
                 replace: true,
                 fast: false,
                 fit_bytes: None,
+                hide_chat: None,
             },
         )
         .unwrap_err();
@@ -615,6 +796,92 @@ mod ffmpeg_tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(left, vec!["Clip.mp4"], "no scratch file may be left behind");
+    }
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::*;
+
+    fn region() -> ChatRegion {
+        ChatRegion {
+            x: 0.01,
+            y: 0.17,
+            w: 0.42,
+            h: 0.2,
+        }
+    }
+
+    /// Geometry against ffmpeg's input size, not baked-in pixels: the same
+    /// saved region has to land on the chat box whether the clip is 1080p or
+    /// has been scaled down to fit a Discord limit.
+    #[test]
+    fn the_box_is_sized_from_the_input_frame() {
+        let f = chat_box_filter(&region());
+        assert!(f.contains("x=in_w*0.0100"), "{f}");
+        assert!(f.contains("y=in_h*0.1700"), "{f}");
+        assert!(f.contains("w=in_w*0.4200"), "{f}");
+        assert!(f.contains("h=in_h*0.2000"), "{f}");
+    }
+
+    /// Filled, not outlined. `drawbox` draws a 3px border by default, which
+    /// would frame the chat rather than cover it.
+    #[test]
+    fn the_box_is_filled() {
+        assert!(chat_box_filter(&region()).contains("t=fill"));
+    }
+
+    #[test]
+    fn the_filter_is_in_the_arguments_before_the_encoder() {
+        let r = region();
+        let a = args(
+            &Settings::default(),
+            Some("libx264"),
+            Path::new("clip.mp4"),
+            0.0,
+            5.0,
+            Some(&r),
+            Path::new("out.mp4"),
+        );
+        let vf = a.iter().position(|x| x == "-vf").expect("-vf is passed");
+        assert_eq!(a[vf + 1], chat_box_filter(&r));
+    }
+
+    #[test]
+    fn no_region_means_no_filter() {
+        let a = args(
+            &Settings::default(),
+            Some("libx264"),
+            Path::new("clip.mp4"),
+            0.0,
+            5.0,
+            None,
+            Path::new("out.mp4"),
+        );
+        assert!(!a.iter().any(|x| x == "-vf"));
+    }
+
+    /// The one that matters. A stream copy cannot paint over anything, so this
+    /// combination has to be refused rather than silently producing a clip that
+    /// still shows the chat the user asked to hide.
+    #[test]
+    fn a_fast_trim_will_not_pretend_to_hide_the_chat() {
+        let err = trim(
+            Path::new("ffmpeg"),
+            &Settings::default(),
+            None,
+            Path::new("nope.mp4"),
+            &Request {
+                start: 0.0,
+                end: 5.0,
+                replace: false,
+                fast: true,
+                fit_bytes: None,
+                hide_chat: Some(region()),
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("re-encoding"), "{err}");
     }
 }
 

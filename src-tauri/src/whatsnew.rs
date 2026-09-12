@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.9",
+        lines: &[
+            "Black out the chat box in trimmed clips, for servers whose rules do not allow showing staff chat, reports or OOC. Settings \u{2192} Hiding the chat, then drag over the chat box while it has something in it.",
+            "Filled solid, not blurred. A blur over moving footage can be averaged back out across frames, so a blurred clip is not the same as a clean one.",
+            "It needs a re-encode, so it cannot be combined with a fast trim - the Fast button says so rather than quietly handing back a clip that still shows the chat.",
+        ],
+    },
+    Release {
         version: "0.2.8",
         lines: &[
             "More than one Discord channel. Name them - Clips, Staff, whatever - and pick where each thing goes when you send it.",

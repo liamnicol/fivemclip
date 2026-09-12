@@ -300,6 +300,11 @@ $("btn-refresh").addEventListener("click", refreshLibrary);
 // The editor and the trimmer write from their own windows, so the grid is told
 // rather than left showing a thumbnail of a file that no longer looks like it.
 listen("library:changed", () => refreshLibrary());
+// The chat region is saved by the overlay, in another window. Without this the
+// settings page still shows "no region set" after one has just been picked.
+listen("settings:changed", async () => {
+  applySettings(await invoke("get_settings").catch(() => settings));
+});
 
 async function refreshLibrary() {
   // Fetched alongside the items: which channels exist decides whether each card
@@ -577,6 +582,29 @@ $("mic_mode").addEventListener("change", () => {
   $("mic-gain-field").style.display = $("mic_mode").value === "off" ? "none" : "";
 });
 
+/* ---------------- chat region ---------------- */
+
+function paintChatRegion(region) {
+  const state = $("chat-region-state");
+  const button = $("pick-chat-region");
+  if (!region) {
+    state.textContent = "No region set yet — the setting does nothing until one is.";
+    button.textContent = "Set the chat region";
+    return;
+  }
+  // Percentages rather than pixels, because that is what is actually stored -
+  // showing pixels would imply it breaks when the resolution changes.
+  const pct = (n) => Math.round(n * 100);
+  state.textContent = `Covering ${pct(region.w)}% × ${pct(region.h)}% of the frame, ${pct(region.x)}% from the left and ${pct(region.y)}% down.`;
+  button.textContent = "Pick it again";
+}
+
+$("pick-chat-region").addEventListener("click", () => {
+  // The overlay freezes the screen, so this window needs to be out of the way
+  // of the thing being pointed at.
+  invoke("start_chat_region_pick").catch((error) => toast(String(error)));
+});
+
 /* ---------------- discord channels ---------------- */
 
 /** Discord's tiers, as choices rather than a number to look up. Values are the
@@ -822,6 +850,8 @@ function applySettings(next) {
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
   renderDiscordChannels(next.discord_targets ?? []);
+  $("hide_chat").checked = next.hide_chat;
+  paintChatRegion(next.chat_region);
   $("min_free_gb").value = next.min_free_gb;
   $("auto_prune").checked = next.auto_prune;
   $("max_library_gb").value = next.max_library_gb;
@@ -927,6 +957,11 @@ function collectSettings() {
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").dataset.combo ?? "",
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
+    hide_chat: $("hide_chat").checked,
+    // Never collected from the page: the region is set by dragging over a
+    // frozen frame and saved by the backend, so echoing it back through every
+    // settings write is only a way to lose it.
+    chat_region: settings?.chat_region ?? null,
     discord_targets: collectDiscordChannels(),
     min_free_gb: Number($("min_free_gb").value),
     auto_prune: $("auto_prune").checked,

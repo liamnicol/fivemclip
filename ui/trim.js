@@ -293,6 +293,41 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") getCurrentWindow().close();
 });
 
+/* ---------------- hiding the chat ---------------- */
+
+function hidingChat() {
+  const box = $("hide-chat");
+  return !box.disabled && box.checked;
+}
+
+/** A stream copy cannot paint over anything, so the two are mutually
+ *  exclusive. The backend refuses the combination outright; this stops it being
+ *  offered in the first place, and says which one is in the way. */
+function paintFastAvailability() {
+  const fast = $("fast");
+  if (hidingChat()) {
+    fast.disabled = true;
+    fast.title = "A fast trim copies the video without re-encoding, so it cannot black out the chat.";
+  } else {
+    fast.disabled = false;
+    fast.title = "";
+  }
+}
+
+$("hide-chat").addEventListener("change", paintFastAvailability);
+
+/** Asked per clip, once it is known: whether it can have its chat hidden
+ *  depends on the file, not only on the setting. */
+function askAboutChat(path) {
+  invoke("chat_hiding", { path })
+    .then(({ available, on }) => {
+      $("hide-chat-wrap").hidden = !available;
+      $("hide-chat").checked = on;
+      paintFastAvailability();
+    })
+    .catch(() => {});
+}
+
 /* ---------------- saving ---------------- */
 
 async function save(replace, fast = false, fitDiscord = false, thenSend = false) {
@@ -311,6 +346,7 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
       replace,
       fast,
       fitBytes: fitDiscord && channel ? channel.limit_bytes : null,
+      hideChat: hidingChat(),
     });
     if (thenSend && channel) {
       pressed.textContent = "Sending…";
@@ -347,6 +383,7 @@ function load(path) {
   end = 0;
   marks = [];
   drawMarks();
+  askAboutChat(path);
   invoke("markers_for", { path })
     .then((found) => {
       marks = found ?? [];

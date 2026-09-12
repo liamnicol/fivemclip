@@ -8,6 +8,8 @@ const sizeLabel = document.getElementById("size");
 let origin = null;
 let current = null;
 let submitted = false;
+/** "capture" to crop a screenshot, "chat" to record where the chat box is. */
+let purpose = "capture";
 
 function cancel() {
   if (submitted) return;
@@ -30,7 +32,10 @@ async function load() {
   document.getElementById("error").hidden = true;
 
   try {
-    const { path } = await invoke("region_frame");
+    const { path, purpose: kind } = await invoke("region_frame");
+    purpose = kind ?? "capture";
+    document.body.classList.toggle("is-chat", purpose === "chat");
+    document.getElementById("hint").hidden = purpose !== "chat";
     // Cache-busted: every capture overwrites the same file, so without this the
     // overlay shows the screen as it was the last time it opened.
     frame.src = `${convertFileSrc(path)}?v=${Date.now()}`;
@@ -122,13 +127,28 @@ window.addEventListener("mouseup", async (event) => {
   const rect = rectFrom(origin, clampToImage(event.clientX, event.clientY));
   origin = null;
 
-  // A stray click is a cancel, not a one-pixel screenshot.
-  if (rect.width < 4 || rect.height < 4) {
+  // A stray click is a cancel, not a one-pixel screenshot. Written as a
+  // positive test so a frame that failed to load - which makes the geometry
+  // NaN, and NaN fails every comparison - cancels rather than submitting nulls.
+  if (!(rect.width >= 4) || !(rect.height >= 4)) {
     cancel();
     return;
   }
 
   submitted = true;
+  if (purpose === "chat") {
+    // The frame's own size, measured off the image that was just dragged over,
+    // so the backend can store the rectangle as fractions of it.
+    await invoke("finish_chat_region", {
+      x: Math.round((rect.left - g.left) * g.scale),
+      y: Math.round((rect.top - g.top) * g.scale),
+      width: Math.round(rect.width * g.scale),
+      height: Math.round(rect.height * g.scale),
+      frameWidth: frame.naturalWidth,
+      frameHeight: frame.naturalHeight,
+    }).catch(() => invoke("cancel_region_capture"));
+    return;
+  }
   await invoke("finish_region_capture", {
     x: Math.round((rect.left - g.left) * g.scale),
     y: Math.round((rect.top - g.top) * g.scale),

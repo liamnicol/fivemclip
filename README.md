@@ -329,6 +329,31 @@ The key is yours and is stored only on your PC. FiveMClip deliberately does not
 ship a shared key — a key baked into a distributed binary gets extracted and
 rate-limited within a week, and then it stops working for everybody.
 
+### Hiding the chat
+
+Most RP servers will not let you post a clip showing staff chat, reports or OOC.
+Tick **Black out the chat box in trimmed clips** in Settings and drag over your
+chat box while it has something in it — the screen freezes, so you are pointing
+at real chat rather than guessing where it sits.
+
+It is stored as a fraction of the screen, not as pixels, so it stays right if
+you change resolution later.
+
+Two things worth knowing:
+
+- **It is a solid fill, not a blur.** A blur over moving footage is weaker than
+  the same blur on a screenshot: the text underneath is static while the
+  encoder's noise is not, so averaging enough frames pulls a legible edge back
+  out. If the rule is that the chat must not be visible, the pixels have to go.
+- **It needs a re-encode, so it cannot be combined with a fast trim.** The Fast
+  button switches off while it is on and says why. Painting over a stream copy
+  is not possible, and the alternative — quietly ignoring it — hands you a clip
+  that still shows what you were covering up.
+
+It only applies to clips FiveMClip recorded. A saved region describes where
+FiveM draws chat on your screen, and painting that rectangle onto some unrelated
+video would just cover whatever happened to be there.
+
 ### Discord
 
 A webhook posts to exactly one channel, so add one per channel you want to send

@@ -12,6 +12,57 @@ pub enum MicMode {
     Mixed,
 }
 
+/// A rectangle over the frame, as fractions of its width and height.
+///
+/// Fractions rather than pixels so one saved region stays correct across a
+/// resolution change, a windowed capture and a clip that has been scaled on the
+/// way out - a pixel rectangle picked on a 1440p monitor covers the wrong part
+/// of a 1080p export, and covering the wrong part is indistinguishable from not
+/// covering anything.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ChatRegion {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl ChatRegion {
+    /// Build from pixels measured on a frame of a known size.
+    pub fn from_pixels(x: u32, y: u32, w: u32, h: u32, frame_w: u32, frame_h: u32) -> Option<Self> {
+        if frame_w == 0 || frame_h == 0 || w == 0 || h == 0 {
+            return None;
+        }
+        Some(Self {
+            x: x as f32 / frame_w as f32,
+            y: y as f32 / frame_h as f32,
+            w: w as f32 / frame_w as f32,
+            h: h as f32 / frame_h as f32,
+        })
+    }
+
+    /// Keep the rectangle on the frame, and say whether anything is left.
+    ///
+    /// A region dragged past the edge of the screen, or one saved by an older
+    /// build with a different idea of the units, must not silently become a box
+    /// over the middle of the picture.
+    fn tidy(&mut self) -> bool {
+        if ![self.x, self.y, self.w, self.h]
+            .iter()
+            .all(|v| v.is_finite())
+        {
+            return false;
+        }
+        self.x = self.x.clamp(0.0, 1.0);
+        self.y = self.y.clamp(0.0, 1.0);
+        self.w = self.w.clamp(0.0, 1.0 - self.x);
+        self.h = self.h.clamp(0.0, 1.0 - self.y);
+        // Below about a twentieth of the frame each way there is no chat box
+        // there, just a misdrag.
+        self.w > 0.005 && self.h > 0.005
+    }
+}
+
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
@@ -147,6 +198,17 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub discord_limit_mb: u32,
 
+    /// Black out the chat box when a clip is exported.
+    ///
+    /// Off by default. It costs a re-encode and it is irreversible, so it is
+    /// not something to opt people into - but for anyone whose server forbids
+    /// showing staff chat, reports or OOC, it is the difference between
+    /// sharing a clip and not.
+    pub hide_chat: bool,
+    /// Where the chat box sits, picked by dragging over a frozen frame. Without
+    /// one, `hide_chat` has nothing to cover and does nothing.
+    pub chat_region: Option<ChatRegion>,
+
     /// Last version whose "what's new" notes the user has seen. Empty on a
     /// fresh install, which is why the splash is gated on `setup_complete`
     /// too - nobody wants a changelog for software they installed a minute ago.
@@ -192,6 +254,8 @@ impl Default for Settings {
             hotkey_marker: "F7".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
+            hide_chat: false,
+            chat_region: None,
             discord_targets: Vec::new(),
             discord_webhook: String::new(),
             discord_limit_mb: 0,
@@ -279,6 +343,13 @@ impl Settings {
         // A floor below a couple of gigabytes is not a floor: Windows itself
         // starts misbehaving long before a disk is genuinely full.
         self.min_free_gb = self.min_free_gb.clamp(2, 500);
+        // A region that cannot be made sense of is dropped rather than
+        // corrected: a box over the wrong part of the clip looks like the
+        // feature working while hiding nothing.
+        if let Some(mut region) = self.chat_region {
+            self.chat_region = region.tidy().then_some(region);
+        }
+
         self.migrate_discord();
         for target in &mut self.discord_targets {
             // The most conservative of Discord's tiers is 10 MB: too small only
@@ -554,6 +625,129 @@ mod autostart_default_tests {
         let stored = r#"{"autostart": false}"#;
         let restored: Settings = serde_json::from_str(stored).expect("parses");
         assert!(!restored.autostart);
+    }
+}
+
+#[cfg(test)]
+mod chat_region_tests {
+    use super::*;
+
+    /// Stored as fractions so the region survives a resolution change. A
+    /// rectangle picked on 1440p and applied as pixels to 1080p covers the
+    /// wrong part of the clip, which looks like the feature working.
+    #[test]
+    fn pixels_become_fractions_of_the_frame() {
+        let r = ChatRegion::from_pixels(0, 750, 500, 270, 1920, 1080).expect("valid");
+        assert!((r.x - 0.0).abs() < 1e-6);
+        assert!((r.y - 0.6944).abs() < 1e-3);
+        assert!((r.w - 0.2604).abs() < 1e-3);
+        assert!((r.h - 0.25).abs() < 1e-3);
+    }
+
+    /// The same drag on two different monitors describes the same fraction of
+    /// the picture, which is the whole reason for the units.
+    #[test]
+    fn the_same_relative_drag_matches_across_resolutions() {
+        let hd = ChatRegion::from_pixels(0, 750, 500, 270, 1920, 1080).expect("valid");
+        let qhd = ChatRegion::from_pixels(0, 1000, 667, 360, 2560, 1440).expect("valid");
+        assert!((hd.x - qhd.x).abs() < 0.01);
+        assert!((hd.y - qhd.y).abs() < 0.01);
+        assert!((hd.w - qhd.w).abs() < 0.01);
+        assert!((hd.h - qhd.h).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_zero_sized_drag_is_not_a_region() {
+        assert!(ChatRegion::from_pixels(10, 10, 0, 50, 1920, 1080).is_none());
+        assert!(ChatRegion::from_pixels(10, 10, 50, 0, 1920, 1080).is_none());
+    }
+
+    /// A frame with no size means the overlay's image never loaded. Dividing by
+    /// it would produce infinities and a box over the whole clip.
+    #[test]
+    fn a_frame_with_no_size_is_refused() {
+        assert!(ChatRegion::from_pixels(10, 10, 50, 50, 0, 1080).is_none());
+        assert!(ChatRegion::from_pixels(10, 10, 50, 50, 1920, 0).is_none());
+    }
+
+    #[test]
+    fn a_region_hanging_off_the_edge_is_pulled_back_on() {
+        let mut s = Settings {
+            chat_region: Some(ChatRegion {
+                x: 0.8,
+                y: 0.9,
+                w: 0.5,
+                h: 0.4,
+            }),
+            ..Default::default()
+        };
+        s.clamp();
+        let r = s.chat_region.expect("kept");
+        assert!((r.x + r.w) <= 1.0001, "{r:?}");
+        assert!((r.y + r.h) <= 1.0001, "{r:?}");
+    }
+
+    /// Dropped rather than corrected. A rectangle that cannot be made sense of
+    /// has no relationship to where the chat is, and a black box over the
+    /// middle of the picture is worse than no box at all.
+    #[test]
+    fn nonsense_is_dropped_rather_than_guessed_at() {
+        for bad in [
+            ChatRegion {
+                x: f32::NAN,
+                y: 0.5,
+                w: 0.3,
+                h: 0.2,
+            },
+            ChatRegion {
+                x: 0.1,
+                y: 0.5,
+                w: f32::INFINITY,
+                h: 0.2,
+            },
+            // Entirely off the frame: clamping leaves nothing.
+            ChatRegion {
+                x: 1.0,
+                y: 0.5,
+                w: 0.3,
+                h: 0.2,
+            },
+            // A misdrag, not a chat box.
+            ChatRegion {
+                x: 0.2,
+                y: 0.2,
+                w: 0.001,
+                h: 0.001,
+            },
+        ] {
+            let mut s = Settings {
+                chat_region: Some(bad),
+                ..Default::default()
+            };
+            s.clamp();
+            assert!(s.chat_region.is_none(), "should have dropped {bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_good_region_survives_a_round_trip() {
+        let region = ChatRegion {
+            x: 0.01,
+            y: 0.68,
+            w: 0.39,
+            h: 0.25,
+        };
+        let mut s = Settings {
+            chat_region: Some(region),
+            hide_chat: true,
+            ..Default::default()
+        };
+        s.clamp();
+        let json = serde_json::to_string(&s).expect("serialises");
+        let mut back: Settings = serde_json::from_str(&json).expect("parses");
+        back.clamp();
+        assert_eq!(back.chat_region, Some(region));
+        assert!(back.hide_chat);
     }
 }
 

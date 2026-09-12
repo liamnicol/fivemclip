@@ -34,6 +34,10 @@ pub struct AppState {
     /// watchdog knows to wait for real headroom rather than restarting into
     /// the same wall a few seconds later.
     pub paused_for_disk: AtomicBool,
+    /// Set while the region overlay is open to pick the chat box rather than to
+    /// take a screenshot. The overlay itself is the same window doing the same
+    /// drag, so what happens on release is the only difference between them.
+    pub picking_chat_region: AtomicBool,
 }
 
 impl AppState {
@@ -62,6 +66,7 @@ impl AppState {
             trim_target: Mutex::new(None),
             manually_stopped: AtomicBool::new(false),
             paused_for_disk: AtomicBool::new(false),
+            picking_chat_region: AtomicBool::new(false),
         }
     }
 

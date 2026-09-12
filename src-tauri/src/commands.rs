@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 use fivemclip_capture::config::Settings;
 use fivemclip_capture::ffmpeg::ProbeReport;
@@ -287,6 +288,9 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
 /// the crop.
 #[tauri::command]
 pub fn start_region_capture(app: AppHandle) {
+    app.state::<AppState>()
+        .picking_chat_region
+        .store(false, Ordering::SeqCst);
     begin_region_capture(app);
 }
 
@@ -370,6 +374,8 @@ pub struct RegionFrame {
     /// convertFileSrc rather than us hand-building an asset URL, which is one
     /// less place to get Windows path encoding wrong.
     pub path: String,
+    /// "capture" or "chat" - what the drag will be used for.
+    pub purpose: &'static str,
 }
 
 #[tauri::command]
@@ -383,6 +389,15 @@ pub fn region_frame(app: AppHandle) -> Result<RegionFrame, String> {
     app.asset_protocol_scope().allow_file(&frame).ok();
     Ok(RegionFrame {
         path: frame.to_string_lossy().into_owned(),
+        purpose: if app
+            .state::<AppState>()
+            .picking_chat_region
+            .load(Ordering::SeqCst)
+        {
+            "chat"
+        } else {
+            "capture"
+        },
     })
 }
 
@@ -453,7 +468,95 @@ pub async fn finish_region_capture(
 #[tauri::command]
 pub fn cancel_region_capture(app: AppHandle) {
     close_region_window(&app);
+    app.state::<AppState>()
+        .picking_chat_region
+        .store(false, Ordering::SeqCst);
     let _ = std::fs::remove_file(shot::region_frame_path());
+}
+
+/// Open the same overlay, but to record where the chat box is.
+///
+/// Freezing the screen is what makes this worth reusing: the chat box has to be
+/// pointed at while it has something in it, and a live game will have scrolled
+/// on by the time anyone has dragged a rectangle over it.
+#[tauri::command]
+pub fn start_chat_region_pick(app: AppHandle) {
+    app.state::<AppState>()
+        .picking_chat_region
+        .store(true, Ordering::SeqCst);
+    begin_region_capture(app);
+}
+
+/// Save the dragged rectangle as the chat region.
+///
+/// Takes the frame's own size from the overlay, which measured the image it was
+/// drawing on, and stores fractions of it - so the region stays right if the
+/// monitor's resolution changes later.
+// Six coordinates and the handles they arrive with. Grouping them into a
+// struct would only move the same six names one level down.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn finish_chat_region(
+    app: AppHandle,
+    state: State<AppState>,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    frame_width: u32,
+    frame_height: u32,
+) -> Result<(), String> {
+    close_region_window(&app);
+    state.picking_chat_region.store(false, Ordering::SeqCst);
+    let _ = std::fs::remove_file(shot::region_frame_path());
+
+    let region = fivemclip_capture::config::ChatRegion::from_pixels(
+        x,
+        y,
+        width,
+        height,
+        frame_width,
+        frame_height,
+    )
+    .ok_or("That selection was too small to be a chat box.")?;
+
+    {
+        let mut settings = state.settings.lock();
+        settings.chat_region = Some(region);
+        // Picking a region is the act of asking for this, so it turns the
+        // feature on. Choosing where the box goes and then finding clips still
+        // showing the chat would read as the setting not working.
+        settings.hide_chat = true;
+        settings.clamp();
+    }
+    state.persist()?;
+    let _ = app.emit("settings:changed", ());
+    notify(&app, "Chat region saved", "Clips will have it blacked out.");
+    Ok(())
+}
+
+/// Whether this clip can have its chat hidden, and whether it is set to be.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChatHiding {
+    /// A region is set, and this file is one of ours.
+    pub available: bool,
+    /// The setting is on, so the toggle starts ticked.
+    pub on: bool,
+}
+
+#[tauri::command]
+pub fn chat_hiding(state: State<AppState>, path: String) -> ChatHiding {
+    let settings = state.settings.lock();
+    // Gated on the file being one this app recorded. A saved region describes
+    // where FiveM draws its chat on this machine's screen; painting that
+    // rectangle onto some unrelated video would cover whatever happened to be
+    // there, which is worse than doing nothing.
+    let available = settings.chat_region.is_some()
+        && library::is_managed(&settings, std::path::Path::new(&path));
+    ChatHiding {
+        available,
+        on: available && settings.hide_chat,
+    }
 }
 
 /// Hide the overlay rather than destroy it.
@@ -864,6 +967,7 @@ pub fn trim_target(state: State<AppState>) -> Option<String> {
 /// Async, and the ffmpeg run is moved off the async runtime as well: this is
 /// the one operation in the app that re-encodes, so it is measured in seconds
 /// rather than milliseconds.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn trim_clip(
     app: AppHandle,
@@ -875,6 +979,10 @@ pub async fn trim_clip(
     // fit_bytes: squeeze the output under this many bytes by lowering the
     // bitrate rather than by cutting more off.
     fit_bytes: Option<u64>,
+    // hide_chat: black out the saved chat region. The region itself is read
+    // from settings rather than passed in, so a stale front end cannot ask for
+    // a rectangle over the middle of the picture.
+    hide_chat: bool,
 ) -> Result<String, String> {
     let handle = app.clone();
     let saved = tauri::async_runtime::spawn_blocking(move || {
@@ -903,6 +1011,7 @@ pub async fn trim_clip(
                 replace,
                 fast,
                 fit_bytes,
+                hide_chat: hide_chat.then_some(settings.chat_region).flatten(),
             },
         )
     })

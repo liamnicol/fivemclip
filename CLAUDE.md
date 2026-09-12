@@ -67,6 +67,19 @@ WebKitGTK.
 text. A blur bug once made redacted text *more* legible than the original -
 verify visually, not by reading the code.
 
+**Video redaction is a solid fill; a blur is not enough.** The editor may blur a
+screenshot because there is only one frame to average. Over moving footage the
+text is static while the encoder's noise is not, so averaging frames pulls a
+legible edge back out of a blur. `trim::chat_box_filter` draws a filled
+`drawbox`, and `trim::ffmpeg_tests::hiding_the_chat_really_removes_it` measures
+the result - with a control on the source, so it cannot pass by the region being
+dark to begin with.
+
+**Hiding the chat and a fast trim are mutually exclusive.** A stream copy cannot
+paint over anything. `trim()` refuses the combination with the other argument
+validation, before it touches the disk, and the trimmer disables Fast rather
+than offering it.
+
 **Hotkeys are `event.code`, not `event.key`.** global-hotkey names keys the way
 `code` does - `KeyK`, `Numpad5`, `Space`, `BracketLeft`. `key` gives the
 character produced, so Numpad5 arrived as `Clear`, Space as `" "` and Shift+1 as

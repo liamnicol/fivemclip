@@ -52,6 +52,13 @@ body { display: flex; flex-direction: column; }
 .btn:hover:not(:disabled) { background: #262c3c; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn-ghost { background: transparent; }
+.toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--panel-2); cursor: pointer; user-select: none;
+}
+.toggle input { margin: 0; }
+
 select {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--line); border-radius: 9px;

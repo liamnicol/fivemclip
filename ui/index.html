@@ -277,6 +277,27 @@
           </fieldset>
 
           <fieldset>
+            <legend>Hiding the chat</legend>
+            <label class="checkbox">
+              <input type="checkbox" id="hide_chat" />
+              <span>Black out the chat box in trimmed clips</span>
+            </label>
+            <div class="field">
+              <button type="button" class="btn btn-ghost" id="pick-chat-region">
+                Set the chat region
+              </button>
+              <small class="muted" id="chat-region-state"></small>
+              <small class="muted">
+                Freezes the screen so you can drag over the chat box while it has
+                something in it. Filled solid rather than blurred: a blur over
+                moving footage can be averaged back out across frames, and
+                servers that ban showing staff chat mean the text being gone.
+                Needs a re-encode, so it cannot be combined with a fast trim.
+              </small>
+            </div>
+          </fieldset>
+
+          <fieldset>
             <legend>Disk space</legend>
             <label class="field">
               <span>Stop recording when free space drops below</span>

@@ -88,3 +88,15 @@ kbd {
   padding: 1px 6px;
   font: 600 12px/1 ui-monospace, Consolas, monospace;
 }
+
+/* Shown only when the overlay is being used to point at the chat box rather
+   than to crop a screenshot, where dragging needs no explanation. */
+#hint {
+  position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
+  z-index: 10; padding: 10px 16px; border-radius: 999px;
+  background: rgba(12, 14, 18, .92); color: #f4f6fa;
+  border: 1px solid rgba(255, 255, 255, .16);
+  font: 500 14px/1 system-ui, sans-serif; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+body.is-selecting #hint { opacity: 0; }
