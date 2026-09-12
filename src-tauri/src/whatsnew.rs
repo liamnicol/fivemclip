@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.8",
+        lines: &[
+            "More than one Discord channel. Name them - Clips, Staff, whatever - and pick where each thing goes when you send it.",
+            "Each channel keeps its own upload limit, because two servers can have two different boost levels and one number for both means refused uploads.",
+            "A channel is only offered for files it would actually accept, and the trimmer squeezes to whichever channel you picked. The webhook you already had is carried over as your first channel.",
+        ],
+    },
+    Release {
         version: "0.2.7",
         lines: &[
             "The region overlay is reused rather than rebuilt for every capture. Building a fullscreen window each time raced with the previous one closing, and it is the leading suspect for a crash after a long evening of captures.",

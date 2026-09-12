@@ -249,6 +249,37 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 
 .empty { text-align: center; color: var(--muted); padding: 48px 0; }
 
+/* Anchored to the button that opened it, so it is positioned in page
+   coordinates rather than inside the card, which clips its children. */
+.menu {
+  position: fixed; z-index: 40; min-width: 160px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .55);
+}
+.menu-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; color: var(--text);
+  font: inherit; padding: 8px 12px; border-radius: 7px; cursor: pointer;
+}
+.menu-item:hover { background: var(--panel-2); }
+
+/* ---------- discord channels ---------- */
+
+.channel {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(0, 2.2fr) auto auto;
+  gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.channel input, .channel select { min-width: 0; }
+.channel .btn { padding: 7px 11px; }
+/* Narrow windows: a four-column row of inputs stops being readable long before
+   it stops fitting. */
+@media (max-width: 760px) {
+  .channel { grid-template-columns: 1fr 1fr; }
+  .channel input[data-field="url"] { grid-column: 1 / -1; }
+}
+
 /* ---------- what's new ---------- */
 
 .sheet {

@@ -872,9 +872,9 @@ pub async fn trim_clip(
     end: f64,
     replace: bool,
     fast: bool,
-    // fit_discord: squeeze the output under the Discord limit by lowering the
+    // fit_bytes: squeeze the output under this many bytes by lowering the
     // bitrate rather than by cutting more off.
-    fit_discord: bool,
+    fit_bytes: Option<u64>,
 ) -> Result<String, String> {
     let handle = app.clone();
     let saved = tauri::async_runtime::spawn_blocking(move || {
@@ -902,7 +902,7 @@ pub async fn trim_clip(
                 end,
                 replace,
                 fast,
-                fit_bytes: fit_discord.then(|| settings.discord_limit_mb as u64 * 1_000_000),
+                fit_bytes,
             },
         )
     })
@@ -1010,11 +1010,28 @@ pub async fn send_to_discord(app: AppHandle, path: String, message: String) -> R
     upload::discord(&webhook, &path, &message).await
 }
 
-/// The upload limit this machine is set to post under, in bytes. The trimmer
-/// needs it to estimate whether a selection will fit.
+/// The channels available to post to, for the menus and the trimmer's estimate.
+///
+/// Deliberately without the webhook URLs. The trimmer only needs to know what a
+/// channel is called and how much it will take.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DiscordChannel {
+    pub name: String,
+    pub limit_bytes: u64,
+}
+
 #[tauri::command]
-pub fn discord_limit_bytes(state: State<AppState>) -> u64 {
-    state.settings.lock().discord_limit_mb as u64 * 1_000_000
+pub fn discord_channels(state: State<AppState>) -> Vec<DiscordChannel> {
+    state
+        .settings
+        .lock()
+        .discord_targets
+        .iter()
+        .map(|t| DiscordChannel {
+            name: t.name.clone(),
+            limit_bytes: t.limit_mb as u64 * 1_000_000,
+        })
+        .collect()
 }
 
 /// Put the clip where YouTube's own upload page can reach it in one paste.

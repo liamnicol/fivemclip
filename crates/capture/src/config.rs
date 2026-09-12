@@ -12,6 +12,24 @@ pub enum MicMode {
     Mixed,
 }
 
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// One Discord channel to post to.
+///
+/// The limit is per target rather than global: a webhook points at a channel in
+/// a particular server, and how large an upload that server accepts depends on
+/// its boost level. Somebody posting clips to their own server and screenshots
+/// to a friend's has two different ceilings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscordTarget {
+    /// What to call it in the menu. "Clips", "Staff", "#highlights".
+    pub name: String,
+    pub url: String,
+    pub limit_mb: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -114,18 +132,19 @@ pub struct Settings {
     /// Auto-upload every screenshot and put the link on the clipboard.
     pub imgbb_auto_upload: bool,
 
-    /// Discord incoming webhook. Posts to exactly one channel, needs no bot and
-    /// no account - which is the only shape of Discord integration that fits an
-    /// app with no server behind it.
+    /// Channels to post to. Each webhook is one channel, so sending clips to
+    /// one place and screenshots to another means more than one of these.
     ///
-    /// A secret in the same way the ImgBB key is: anyone holding it can post to
-    /// that channel.
+    /// Every URL here is a secret in the same way the ImgBB key is: anyone
+    /// holding one can post to that channel.
+    pub discord_targets: Vec<DiscordTarget>,
+
+    /// The single webhook this used to be, kept only so an existing settings
+    /// file migrates into `discord_targets` on load. Never written back.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub discord_webhook: String,
-    /// The upload size limit of the server being posted to, in megabytes.
-    ///
-    /// A setting rather than a constant on purpose. Discord has changed this
-    /// more than once and it varies by Nitro tier and server boost level, so a
-    /// number baked in here would be wrong for somebody on the day it shipped.
+    /// The single limit this used to be, kept for the same migration.
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub discord_limit_mb: u32,
 
     /// Last version whose "what's new" notes the user has seen. Empty on a
@@ -173,11 +192,9 @@ impl Default for Settings {
             hotkey_marker: "F7".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
+            discord_targets: Vec::new(),
             discord_webhook: String::new(),
-            // The most conservative of Discord's tiers: too small is a clip
-            // that gets refused, too large is one that uploads and is rejected
-            // after the wait.
-            discord_limit_mb: 10,
+            discord_limit_mb: 0,
             last_seen_version: String::new(),
             cached_pipeline: None,
             cached_pipeline_fingerprint: None,
@@ -222,6 +239,28 @@ impl Settings {
         (bits / 8) + (bits / 8 / 10)
     }
 
+    /// Fold the old single-webhook settings into the list.
+    ///
+    /// Runs on every load and is idempotent: once the list has the target, the
+    /// old fields are cleared and skipped when serialising, so this stops
+    /// happening. Without it, everyone who set a webhook before this existed
+    /// would open the app to an empty list and assume it had been lost.
+    fn migrate_discord(&mut self) {
+        let old = std::mem::take(&mut self.discord_webhook);
+        let limit = std::mem::take(&mut self.discord_limit_mb);
+        if old.trim().is_empty() {
+            return;
+        }
+        if self.discord_targets.iter().any(|t| t.url == old) {
+            return;
+        }
+        self.discord_targets.push(DiscordTarget {
+            name: "Discord".into(),
+            url: old,
+            limit_mb: if limit == 0 { 10 } else { limit },
+        });
+    }
+
     pub fn clamp(&mut self) {
         self.buffer_seconds = self.buffer_seconds.clamp(10, 1800);
         // Never longer than there is buffer to take it from, and never shorter
@@ -240,7 +279,17 @@ impl Settings {
         // A floor below a couple of gigabytes is not a floor: Windows itself
         // starts misbehaving long before a disk is genuinely full.
         self.min_free_gb = self.min_free_gb.clamp(2, 500);
-        self.discord_limit_mb = self.discord_limit_mb.clamp(1, 500);
+        self.migrate_discord();
+        for target in &mut self.discord_targets {
+            // The most conservative of Discord's tiers is 10 MB: too small only
+            // costs a needless re-encode, too large means an upload that is
+            // refused after the wait.
+            target.limit_mb = target.limit_mb.clamp(1, 500);
+            if target.name.trim().is_empty() {
+                target.name = "Discord".into();
+            }
+        }
+        self.discord_targets.retain(|t| !t.url.trim().is_empty());
         self.max_library_gb = self.max_library_gb.clamp(1, 10_000);
         self.system_gain_db = self.system_gain_db.clamp(-30.0, 30.0);
         if self.output_dir.as_os_str().is_empty() {
@@ -505,6 +554,112 @@ mod autostart_default_tests {
         let stored = r#"{"autostart": false}"#;
         let restored: Settings = serde_json::from_str(stored).expect("parses");
         assert!(!restored.autostart);
+    }
+}
+
+#[cfg(test)]
+mod discord_target_tests {
+    use super::*;
+
+    /// Anyone who set a webhook before the list existed must find it still
+    /// there. Losing it silently looks exactly like the feature breaking.
+    #[test]
+    fn an_old_single_webhook_becomes_a_target() {
+        let stored = r#"{"discord_webhook": "https://discord.com/api/webhooks/1/x",
+                         "discord_limit_mb": 50}"#;
+        let mut s: Settings = serde_json::from_str(stored).expect("parses");
+        s.clamp();
+
+        assert_eq!(s.discord_targets.len(), 1);
+        assert_eq!(
+            s.discord_targets[0].url,
+            "https://discord.com/api/webhooks/1/x"
+        );
+        assert_eq!(s.discord_targets[0].limit_mb, 50);
+        assert!(!s.discord_targets[0].name.is_empty());
+    }
+
+    /// clamp() runs on every load, so migrating twice must not duplicate.
+    #[test]
+    fn migrating_twice_does_not_duplicate() {
+        let stored = r#"{"discord_webhook": "https://discord.com/api/webhooks/1/x"}"#;
+        let mut s: Settings = serde_json::from_str(stored).expect("parses");
+        s.clamp();
+        s.clamp();
+        assert_eq!(s.discord_targets.len(), 1);
+    }
+
+    /// The old fields are cleared and skipped when writing, so a migrated file
+    /// never carries them forward to be migrated again.
+    #[test]
+    fn the_old_fields_are_not_written_back() {
+        let stored = r#"{"discord_webhook": "https://discord.com/api/webhooks/1/x"}"#;
+        let mut s: Settings = serde_json::from_str(stored).expect("parses");
+        s.clamp();
+
+        let written = serde_json::to_string(&s).expect("serialises");
+        assert!(!written.contains("discord_webhook"), "{written}");
+        assert!(!written.contains("discord_limit_mb"), "{written}");
+    }
+
+    #[test]
+    fn a_target_with_no_url_is_dropped() {
+        let mut s = Settings {
+            discord_targets: vec![
+                DiscordTarget {
+                    name: "Clips".into(),
+                    url: "   ".into(),
+                    limit_mb: 25,
+                },
+                DiscordTarget {
+                    name: "Staff".into(),
+                    url: "https://discord.com/api/webhooks/2/y".into(),
+                    limit_mb: 25,
+                },
+            ],
+            ..Default::default()
+        };
+        s.clamp();
+        assert_eq!(s.discord_targets.len(), 1);
+        assert_eq!(s.discord_targets[0].name, "Staff");
+    }
+
+    /// Each channel keeps its own ceiling: two servers can have two different
+    /// boost levels, and using one number for both means refused uploads.
+    #[test]
+    fn limits_are_per_channel() {
+        let mut s = Settings {
+            discord_targets: vec![
+                DiscordTarget {
+                    name: "Mine".into(),
+                    url: "https://discord.com/api/webhooks/1/x".into(),
+                    limit_mb: 100,
+                },
+                DiscordTarget {
+                    name: "Theirs".into(),
+                    url: "https://discord.com/api/webhooks/2/y".into(),
+                    limit_mb: 10,
+                },
+            ],
+            ..Default::default()
+        };
+        s.clamp();
+        assert_eq!(s.discord_targets[0].limit_mb, 100);
+        assert_eq!(s.discord_targets[1].limit_mb, 10);
+    }
+
+    #[test]
+    fn a_nonsense_limit_is_clamped() {
+        let mut s = Settings {
+            discord_targets: vec![DiscordTarget {
+                name: "Clips".into(),
+                url: "https://discord.com/api/webhooks/1/x".into(),
+                limit_mb: 99_999,
+            }],
+            ..Default::default()
+        };
+        s.clamp();
+        assert_eq!(s.discord_targets[0].limit_mb, 500);
     }
 }
 

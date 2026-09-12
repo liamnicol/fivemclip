@@ -27,14 +27,19 @@ const MIN_SECONDS = 0.25;
 const AUDIO_KBPS = 160;
 const MIN_USEFUL_KBPS = 1500;
 
-/** Discord's upload limit for this user, in bytes. Zero until it is read. */
-let discordLimit = 0;
+/** Channels to post to. The limit is per channel, so which one is selected
+ *  decides the bitrate the clip has to be squeezed to. */
+let discordChannels = [];
+
+function chosenChannel() {
+  return discordChannels[Number($("discord-target").value)] ?? null;
+}
 
 /** The video bitrate that fits the current selection under the limit.
  *  Mirrors trim::bitrate_to_fit, including the 5% it leaves for the muxer. */
-function fitKbps(seconds) {
+function fitKbps(seconds, limitBytes) {
   if (seconds <= 0) return 0;
-  return Math.max(0, (discordLimit * 0.95 * 8) / seconds / 1000 - AUDIO_KBPS);
+  return Math.max(0, (limitBytes * 0.95 * 8) / seconds / 1000 - AUDIO_KBPS);
 }
 
 /* ---------------- formatting ---------------- */
@@ -106,19 +111,25 @@ function setEnd(t) {
 function paintFit() {
   const pill = $("fit-pill");
   const button = $("discord");
-  if (!discordLimit) {
+  const picker = $("discord-target");
+  const channel = chosenChannel();
+  if (!channel) {
     pill.hidden = true;
     button.hidden = true;
+    picker.hidden = true;
     return;
   }
   button.hidden = false;
   pill.hidden = false;
+  // One channel needs no choosing, and a select with a single option is just
+  // furniture.
+  picker.hidden = discordChannels.length < 2;
 
-  const kbps = fitKbps(end - start);
-  const mb = (discordLimit / 1e6).toFixed(0);
+  const kbps = fitKbps(end - start, channel.limit_bytes);
+  const mb = (channel.limit_bytes / 1e6).toFixed(0);
   if (kbps < MIN_USEFUL_KBPS) {
     pill.className = "pill bad";
-    pill.textContent = `Too long for ${mb} MB — send it to YouTube instead`;
+    pill.textContent = `Too long for ${channel.name} at ${mb} MB — try YouTube`;
     button.disabled = true;
     return;
   }
@@ -126,10 +137,10 @@ function paintFit() {
   const mbps = (kbps / 1000).toFixed(1);
   if (kbps >= 6000) {
     pill.className = "pill good";
-    pill.textContent = `Fits ${mb} MB at ${mbps} Mbps`;
+    pill.textContent = `Fits ${channel.name} at ${mbps} Mbps`;
   } else {
     pill.className = "pill ok";
-    pill.textContent = `Fits ${mb} MB at ${mbps} Mbps — soft`;
+    pill.textContent = `Fits ${channel.name} at ${mbps} Mbps — soft`;
   }
 }
 
@@ -292,17 +303,22 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
   pressed.textContent = "Trimming…";
   video.pause();
   try {
+    const channel = chosenChannel();
     const saved = await invoke("trim_clip", {
       path: sourcePath,
       start,
       end,
       replace,
       fast,
-      fitDiscord,
+      fitBytes: fitDiscord && channel ? channel.limit_bytes : null,
     });
-    if (thenSend) {
+    if (thenSend && channel) {
       pressed.textContent = "Sending…";
-      await invoke("send_to_discord", { path: saved, message: "" });
+      await invoke("send_to_discord", {
+        path: saved,
+        target: Number($("discord-target").value) || 0,
+        message: "",
+      });
     }
     getCurrentWindow().close();
   } catch (error) {
@@ -363,12 +379,18 @@ function load(path) {
   video.src = `${convertFileSrc(path)}?v=${Date.now()}`;
 }
 
-invoke("discord_limit_bytes")
-  .then((bytes) => {
-    discordLimit = bytes ?? 0;
+invoke("discord_channels")
+  .then((channels) => {
+    discordChannels = channels ?? [];
+    const picker = $("discord-target");
+    picker.innerHTML = discordChannels
+      .map((c, i) => `<option value="${i}">${c.name}</option>`)
+      .join("");
     paintFit();
   })
   .catch(() => {});
+
+$("discord-target").addEventListener("change", paintFit);
 
 listen("trim:open", (event) => load(event.payload));
 

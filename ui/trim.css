@@ -52,6 +52,12 @@ body { display: flex; flex-direction: column; }
 .btn:hover:not(:disabled) { background: #262c3c; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn-ghost { background: transparent; }
+select {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px;
+  padding: 8px 10px; font: inherit; max-width: 170px;
+}
+
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .btn-primary:hover:not(:disabled) { background: #f04b45; }
 

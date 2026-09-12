@@ -4,6 +4,8 @@ const dialog = window.__TAURI__.dialog;
 
 let settings = null;
 let libraryItems = [];
+/** Channels to post to, without their webhook URLs. */
+let discordChannels = [];
 let libraryFilter = "all";
 
 /* ---------------- helpers ---------------- */
@@ -300,8 +302,67 @@ $("btn-refresh").addEventListener("click", refreshLibrary);
 listen("library:changed", () => refreshLibrary());
 
 async function refreshLibrary() {
-  libraryItems = await invoke("library_items").catch(() => []);
+  // Fetched alongside the items: which channels exist decides whether each card
+  // offers the button at all.
+  [libraryItems, discordChannels] = await Promise.all([
+    invoke("library_items").catch(() => []),
+    invoke("discord_channels").catch(() => []),
+  ]);
   renderLibrary();
+}
+
+/** A small menu anchored to the button that opened it.
+ *
+ *  Resolves to the chosen channel, or null if dismissed - so the caller can
+ *  simply stop rather than having to track a cancelled state. */
+function pickChannel(anchor, channels) {
+  return new Promise((resolve) => {
+    const menu = document.createElement("div");
+    menu.className = "menu";
+    for (const channel of channels) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "menu-item";
+      item.textContent = channel.name;
+      item.addEventListener("click", () => {
+        close();
+        resolve(channel);
+      });
+      menu.append(item);
+    }
+
+    const close = () => {
+      menu.remove();
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+    const onOutside = (event) => {
+      if (menu.contains(event.target)) return;
+      close();
+      resolve(null);
+    };
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      close();
+      resolve(null);
+    };
+
+    const box = anchor.getBoundingClientRect();
+    menu.style.left = `${box.left}px`;
+    menu.style.top = `${box.bottom + 4}px`;
+    document.body.append(menu);
+    // Keep it on screen when the card is near the right edge or the bottom.
+    const menuBox = menu.getBoundingClientRect();
+    if (menuBox.right > window.innerWidth - 8) {
+      menu.style.left = `${Math.max(8, window.innerWidth - menuBox.width - 8)}px`;
+    }
+    if (menuBox.bottom > window.innerHeight - 8) {
+      menu.style.top = `${Math.max(8, box.top - menuBox.height - 4)}px`;
+    }
+
+    document.addEventListener("pointerdown", onOutside, true);
+    document.addEventListener("keydown", onKey, true);
+  });
 }
 
 function renderLibrary() {
@@ -333,12 +394,12 @@ function renderLibrary() {
       : "";
     // An already-uploaded screenshot keeps its link instead of offering the
     // upload again - a second upload would just orphan the first one on ImgBB.
-    // Offered on anything small enough to go as-is. A clip too big for the
-    // limit is sent from the trimmer instead, which can shrink it to fit.
-    const discord =
-      settings?.discord_webhook && item.size_bytes <= (settings.discord_limit_mb ?? 0) * 1e6
-        ? `<button class="btn" data-act="discord">To Discord</button>`
-        : "";
+    // Offered when at least one channel would accept it as-is. A clip too big
+    // for every channel is sent from the trimmer, which can shrink it to fit.
+    const fits = discordChannels.filter((c) => item.size_bytes <= c.limit_bytes);
+    const discord = fits.length
+      ? `<button class="btn" data-act="discord">To Discord${fits.length > 1 ? " ▾" : ""}</button>`
+      : "";
 
     const share = isVideo
       ? `<button class="btn" data-act="trim">Trim</button>
@@ -419,14 +480,22 @@ async function handleItemAction(action, item, button) {
       break;
     }
     case "discord": {
+      const fits = discordChannels
+        .map((c, index) => ({ ...c, index }))
+        .filter((c) => item.size_bytes <= c.limit_bytes);
+      // One channel is not a decision worth a menu.
+      const chosen = fits.length === 1 ? fits[0] : await pickChannel(button, fits);
+      if (!chosen) break;
+
+      const label = button.textContent;
       button.disabled = true;
       button.textContent = "Sending…";
       try {
-        await call("send_to_discord", { path: item.path, message: "" });
-        toast("Sent to Discord");
+        await call("send_to_discord", { path: item.path, target: chosen.index, message: "" });
+        toast(`Sent to ${chosen.name}`);
       } finally {
         button.disabled = false;
-        button.textContent = "To Discord";
+        button.textContent = label;
       }
       break;
     }
@@ -506,6 +575,68 @@ $("auto_prune").addEventListener("change", () => {
 
 $("mic_mode").addEventListener("change", () => {
   $("mic-gain-field").style.display = $("mic_mode").value === "off" ? "none" : "";
+});
+
+/* ---------------- discord channels ---------------- */
+
+/** Discord's tiers, as choices rather than a number to look up. Values are the
+ *  server's ceiling in MB; the labels say which situation each one is. */
+const DISCORD_LIMITS = [
+  [10, "10 MB — no Nitro, unboosted"],
+  [25, "25 MB — larger free limit"],
+  [50, "50 MB — Nitro Basic or Level 2"],
+  [100, "100 MB — Level 3 server"],
+  [500, "500 MB — Nitro"],
+];
+
+function discordRow({ name = "", url = "", limit_mb = 10 } = {}) {
+  const row = document.createElement("div");
+  row.className = "channel";
+  const options = DISCORD_LIMITS.map(
+    ([mb, label]) => `<option value="${mb}"${mb === limit_mb ? " selected" : ""}>${label}</option>`,
+  ).join("");
+  row.innerHTML = `
+    <input type="text" data-field="name" placeholder="Name" value="${escapeHtml(name)}" />
+    <input type="password" data-field="url" placeholder="https://discord.com/api/webhooks/…"
+           autocomplete="off" value="${escapeHtml(url)}" />
+    <select data-field="limit">${options}</select>
+    <button type="button" class="btn btn-ghost" data-act="remove" title="Remove this channel">Remove</button>`;
+  row.querySelector('[data-act="remove"]').addEventListener("click", () => {
+    row.remove();
+    scheduleSave();
+  });
+  return row;
+}
+
+function renderDiscordChannels(targets) {
+  const list = $("discord-list");
+  // Settings save as they are typed, and every save re-applies what came back.
+  // Rebuilding these rows unconditionally would tear the field out from under
+  // whoever is halfway through pasting a webhook into it.
+  if (sameChannels(collectDiscordChannels(), targets)) return;
+  list.innerHTML = "";
+  for (const target of targets) list.append(discordRow(target));
+}
+
+function sameChannels(a, b) {
+  return (
+    a.length === b.length &&
+    a.every((x, i) => x.name === b[i].name && x.url === b[i].url && x.limit_mb === b[i].limit_mb)
+  );
+}
+
+function collectDiscordChannels() {
+  return [...$("discord-list").children].map((row) => ({
+    name: row.querySelector('[data-field="name"]').value.trim(),
+    url: row.querySelector('[data-field="url"]').value.trim(),
+    limit_mb: Number(row.querySelector('[data-field="limit"]').value),
+  }));
+}
+
+$("discord-add").addEventListener("click", () => {
+  const row = discordRow();
+  $("discord-list").append(row);
+  row.querySelector('[data-field="name"]').focus();
 });
 
 /* ---------------- hotkeys ---------------- */
@@ -690,8 +821,7 @@ function applySettings(next) {
   setCombo($("hotkey_toggle_buffer"), next.hotkey_toggle_buffer);
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
-  $("discord_webhook").value = next.discord_webhook;
-  $("discord_limit_mb").value = String(next.discord_limit_mb);
+  renderDiscordChannels(next.discord_targets ?? []);
   $("min_free_gb").value = next.min_free_gb;
   $("auto_prune").checked = next.auto_prune;
   $("max_library_gb").value = next.max_library_gb;
@@ -797,8 +927,7 @@ function collectSettings() {
     hotkey_toggle_buffer: $("hotkey_toggle_buffer").dataset.combo ?? "",
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
-    discord_webhook: $("discord_webhook").value.trim(),
-    discord_limit_mb: Number($("discord_limit_mb").value),
+    discord_targets: collectDiscordChannels(),
     min_free_gb: Number($("min_free_gb").value),
     auto_prune: $("auto_prune").checked,
     max_library_gb: Number($("max_library_gb").value),

@@ -331,30 +331,33 @@ rate-limited within a week, and then it stops working for everybody.
 
 ### Discord
 
-Make a webhook in the channel you want clips to land in — *Channel settings →
-Integrations → Webhooks → New Webhook → Copy Webhook URL* — and paste it into
-Settings. It posts to that one channel, needs no bot and no account.
+A webhook posts to exactly one channel, so add one per channel you want to send
+to — *Channel settings → Integrations → Webhooks → New Webhook → Copy Webhook
+URL*. Name each one in Settings: Clips, Staff, whatever makes sense. No bot, no
+account.
 
-Treat the URL like a password. Anyone holding it can post to that channel. It is
-stored only on your PC and goes nowhere but discord.com.
+Treat every URL like a password. Anyone holding one can post to that channel.
+They are stored only on your PC and go nowhere but discord.com.
 
-Also pick your server's **upload limit**. Discord has changed this more than
-once and it differs by Nitro tier and boost level, so it is a setting rather
-than a number baked in.
+Each channel has **its own upload limit**, because two servers can be at two
+different boost levels and one number for both means uploads that are refused
+after the wait. Discord has changed these figures more than once, so they are
+settings rather than something baked in.
 
-Anything already under the limit gets a **To Discord** button in the Library.
-Clips usually are not: at 30 Mbps only about seven seconds fits in 25 MB.
+Anything already small enough gets a **To Discord** button in the Library, and
+picking between channels only happens when more than one would take it. Clips
+usually are not small enough: at 30 Mbps only about seven seconds fits in 25 MB.
 
-So the trimmer squeezes instead of cutting. Pick the moment you actually want
-and press **Fit & send to Discord** — it works out the bitrate that fits that
-selection under your limit and re-encodes to it. The readout tells you what that
-will cost before you commit:
+So the trimmer squeezes instead of cutting. Pick the moment you actually want,
+choose the channel, and press **Fit & send** — it works out the bitrate that
+fits that selection under that channel's limit and re-encodes to it. The readout
+tells you what that will cost before you commit:
 
 | | |
 | --- | --- |
-| `Fits 25 MB at 9.3 Mbps` | good |
-| `Fits 25 MB at 3.2 Mbps — soft` | watchable |
-| `Too long for 25 MB` | it refuses, and points you at YouTube |
+| `Fits Clips at 9.3 Mbps` | good |
+| `Fits Clips at 3.2 Mbps — soft` | watchable |
+| `Too long for Clips at 25 MB` | it refuses, and points you at YouTube |
 
 Five minutes will not go to Discord at any quality worth watching, and the app
 says so rather than quietly producing a smear.

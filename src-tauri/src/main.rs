@@ -97,7 +97,7 @@ fn main() {
             commands::upload_imgbb,
             commands::youtube_handoff,
             commands::send_to_discord,
-            commands::discord_limit_bytes,
+            commands::discord_channels,
             commands::copy_text,
             commands::open_url,
             updates::check_for_update,
