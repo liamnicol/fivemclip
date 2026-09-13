@@ -379,6 +379,18 @@ Add an entry at the top of `whatsnew::RELEASES` for the new version. A test
 fails without one, because a release that ships an empty "what's new" splash is
 worse than one that ships none.
 
+**Never add to the entry of a version that has already been tagged.** It has
+happened three times: work lands on top of an unreleased version number, that
+number gets tagged in between, and the entry for a build already on people's
+machines grows lines describing fixes it does not contain. The what's-new panel
+is the one place the app explains itself, and one claiming a fix that is not
+there is worse than one that says nothing. Check what is published before
+editing an entry - `gh release list`, or the tags - and if the version is out,
+the work belongs in a new one. `whatsnew::shipped_notes_are_immutable` compares
+every entry against what its own tag shipped and fails if they have drifted; it
+skips silently where the tags are not fetched, so `git fetch --tags` first for
+it to mean anything.
+
 `TAURI_SIGNING_PRIVATE_KEY` must stay set as a repository secret. Losing it
 means no installed copy can ever be updated again; they would all need a manual
 reinstall.

@@ -20,12 +20,17 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
-        version: "0.2.17",
+        version: "0.2.18",
         lines: &[
             "Trimming shows a progress bar and how long is left. It used to say \"Trimming…\" and go on saying it - for minutes, on a long session - with no way to tell a slow encode from a hung one. The numbers come from ffmpeg itself, so they stay honest when it slows down.",
             "The trimmer will save again. Save was greyed out until you had trimmed something, which meant blacking out the chat across a whole clip - the commonest reason to open it - was refused outright. That re-encodes every frame, so it is real work and is allowed now.",
             "When Save is unavailable it says why, instead of being grey for no stated reason.",
             "Fast trim no longer comes back to life mid-drag. Turning on Hide chat disabled it correctly and the next nudge of a handle silently re-enabled it, offering the one combination the app refuses.",
+        ],
+    },
+    Release {
+        version: "0.2.17",
+        lines: &[
             "If ffmpeg cannot run, the app says which ffmpeg.exe it picked and why Windows will not start it, instead of passing on \"%1 is not a valid Win32 application\". That message named neither the file nor which of the three places it had been found in.",
             "Every log now opens with the ffmpeg it chose and the version that binary reports - or that it cannot be run, or that none was found at all. The path had never been written down anywhere, so there was no way to answer \"which ffmpeg?\" after the fact.",
         ],
@@ -200,7 +205,6 @@ pub const RELEASES: &[Release] = &[
             "The screenshot editor can mark things up as well as hide them: Arrow, Box and Crop, alongside the redaction tools.",
             "Arrows and boxes are drawn with a dark outline, so one colour stays readable on a night street and on a blown-out minimap.",
             "Crop is undoable like everything else - it is applied when you save, not when you drag it.",
-            "Portable copies no longer offer an update they cannot apply. Download the new zip instead.",
         ],
     },
     Release {
@@ -293,6 +297,73 @@ fn notes(r: &Release) -> ReleaseNotes {
 pub fn dismiss_whats_new(state: State<AppState>) -> Result<(), String> {
     state.settings.lock().last_seen_version = env!("CARGO_PKG_VERSION").to_string();
     state.persist()
+}
+
+/// The notes for a version that has already shipped must not change.
+///
+/// Twice now, work has landed on top of an unreleased version number that got
+/// tagged in between - so the entry for a release already on people's machines
+/// grew lines describing fixes that build does not contain. The what's-new
+/// panel is the one place the app explains itself, and a panel claiming a fix
+/// that is not there is worse than one that says nothing.
+///
+/// Compared against what each tag actually shipped, which is the only source of
+/// truth for it. Skips where git or the tags are not available rather than
+/// failing, since a shallow CI checkout has neither.
+#[cfg(test)]
+mod shipped_notes_are_immutable {
+    use super::RELEASES;
+
+    fn at_tag(version: &str) -> Option<String> {
+        let out = std::process::Command::new("git")
+            .args(["show", &format!("v{version}:src-tauri/src/whatsnew.rs")])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    /// The `lines` of one release, as they appear in a copy of this file.
+    fn lines_in(source: &str, version: &str) -> Option<Vec<String>> {
+        let start = source.find(&format!("version: \"{version}\""))?;
+        let rest = &source[start..];
+        let end = rest.find("\n    },")?;
+        Some(
+            rest[..end]
+                .lines()
+                .map(str::trim)
+                .filter(|l| l.starts_with('"'))
+                .map(str::to_string)
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_release_that_is_already_out_still_says_what_it_said() {
+        let here = include_str!("whatsnew.rs");
+        let mut checked = 0;
+
+        for release in RELEASES {
+            let Some(shipped) = at_tag(release.version) else {
+                continue; // never tagged, or no git history here
+            };
+            let Some(was) = lines_in(&shipped, release.version) else {
+                continue; // predates this file's shape
+            };
+            let now = lines_in(here, release.version).unwrap_or_default();
+            assert_eq!(
+                was, now,
+                "the notes for {} have changed since it was released - if this is new \
+                 work, it belongs in a new version, not in one already installed",
+                release.version,
+            );
+            checked += 1;
+        }
+
+        eprintln!("checked {checked} released version(s) against their tags");
+    }
 }
 
 #[cfg(test)]
