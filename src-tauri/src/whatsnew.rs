@@ -20,6 +20,13 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.17",
+        lines: &[
+            "If ffmpeg cannot run, the app says which ffmpeg.exe it picked and why Windows will not start it, instead of passing on \"%1 is not a valid Win32 application\". That message named neither the file nor which of the three places it had been found in.",
+            "Every log now opens with the ffmpeg it chose and the version that binary reports - or that it cannot be run, or that none was found at all. The path had never been written down anywhere, so there was no way to answer \"which ffmpeg?\" after the fact.",
+        ],
+    },
+    Release {
         version: "0.2.16",
         lines: &[
             "The trimmer's buttons work. The video was overflowing the area it sat in and painting over the row beneath it, so \"Play selection\", \"Start here\" and \"End here\" could be seen, could be hovered, and did nothing at all - at every window size.",
@@ -28,7 +35,6 @@ pub const RELEASES: &[Release] = &[
             "If no chat region has been set, the trimmer says so instead of hiding the option. It used to disappear entirely, which was impossible to tell apart from the feature not working.",
             "A recording whose length was never written - a session interrupted part way through saving - now opens in the trimmer instead of refusing with \"could not read how long that clip is\".",
             "Clips and sessions are assembled beside their destination and moved into place only when they are finished. A crash or a forced quit part way through used to leave the half-written file sitting in the library, looking like a recording that had gone wrong. Any left over from earlier runs are cleared at startup.",
-            "If ffmpeg cannot run, the app now says which ffmpeg.exe it picked and why it will not start, instead of passing on \"%1 is not a valid Win32 application\". It also writes the one it found, and its version, to the log on every start.",
         ],
     },
     Release {
