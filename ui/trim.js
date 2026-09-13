@@ -84,12 +84,52 @@ function paint() {
 
   paintFit();
 
-  const whole = start <= 0 && end >= duration;
-  $("reset").disabled = whole;
-  // Saving the whole thing over itself is work that changes nothing.
-  $("save").disabled = whole;
-  $("save-copy").disabled = whole;
-  $("fast").disabled = whole;
+  $("reset").disabled = wholeClip();
+
+  // One place decides this. `paint()` and the chat toggle both used to write
+  // `fast.disabled` and disagree about it, and paint() runs on every drag - so
+  // turning Hide chat on correctly disabled Fast, and the next nudge of a
+  // handle quietly turned it back on, leaving the one combination the backend
+  // refuses sitting there as an enabled button.
+  const why = { save: refusal("save"), fast: refusal("fast") };
+  for (const id of ["save", "save-copy"]) {
+    $(id).disabled = why.save !== "";
+    $(id).title = why.save;
+  }
+  $("fast").disabled = why.fast !== "";
+  $("fast").title = why.fast;
+
+  // A disabled button with no reason given is the whole of "it does not allow
+  // saving": Save is grey the moment the window opens, and nothing anywhere
+  // says that a selection is what turns it on.
+  $("why").textContent = why.save;
+  $("why").hidden = why.save === "";
+}
+
+const wholeClip = () => start <= 0 && end >= duration;
+
+/** Why an action is refused, ready to show, or "" if it is not. */
+function refusal(which) {
+  const whole = wholeClip();
+  const hiding = hidingChat();
+
+  if (which === "fast") {
+    // A stream copy cannot paint over anything; the backend refuses the pair.
+    if (hiding) {
+      return "A fast trim copies the video without re-encoding, so it cannot black out the chat.";
+    }
+    if (whole) return "Nothing is trimmed yet — drag the handles to choose what to keep.";
+    return "";
+  }
+
+  // Saving the whole clip over itself changes nothing - unless it is not only
+  // a trim. Hiding the chat re-encodes every frame, so blacking the chat out
+  // across a whole clip is a real request and a common one, and refusing it
+  // was why the trimmer looked like it would not save at all.
+  if (whole && !hiding) {
+    return "Nothing is trimmed yet — drag the handles, or scrub and press I and O.";
+  }
+  return "";
 }
 
 function setStart(t) {
@@ -303,22 +343,8 @@ function hidingChat() {
   return !box.disabled && box.checked;
 }
 
-/** A stream copy cannot paint over anything, so the two are mutually
- *  exclusive. The backend refuses the combination outright; this stops it being
- *  offered in the first place, and says which one is in the way. */
-function paintFastAvailability() {
-  const fast = $("fast");
-  if (hidingChat()) {
-    fast.disabled = true;
-    fast.title = "A fast trim copies the video without re-encoding, so it cannot black out the chat.";
-  } else {
-    fast.disabled = false;
-    fast.title = "";
-  }
-}
-
 $("hide-chat").addEventListener("change", () => {
-  paintFastAvailability();
+  paint();
   paintChatPreview();
 });
 
@@ -391,7 +417,7 @@ function askAboutChat(path) {
       $("hide-chat").checked = on;
       $("hide-chat-why").textContent = available ? "" : reason ?? "";
       $("hide-chat-why").hidden = available;
-      paintFastAvailability();
+      paint();
       paintChatPreview();
     })
     .catch((error) => {
@@ -455,7 +481,7 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
       paintChatPreview();
     };
     video.src = `${convertFileSrc(sourcePath)}?v=${Date.now()}`;
-    paintFastAvailability();
+    paint();
     paint();
   }
 }

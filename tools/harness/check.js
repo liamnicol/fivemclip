@@ -121,15 +121,77 @@ async function unavailableChatHidingSaysWhy() {
   await h.done();
 }
 
+async function theWholeClipCanStillHaveItsChatHidden() {
+  // Blacking the chat out across a whole clip re-encodes every frame, so it is
+  // a real request - and the commonest one. Save was disabled whenever nothing
+  // was trimmed, which refused it and looked like the trimmer not saving.
+  const h = await open("trim.html", scenario());
+  await ready(h.page);
+  await h.page.waitForTimeout(200);
+  eq("Save works on an untrimmed clip while hiding the chat", await h.page.evaluate(() => document.getElementById("save").disabled), false);
+
+  await h.page.uncheck("#hide-chat");
+  await h.page.waitForTimeout(150);
+  eq("and is refused once there is nothing to do", await h.page.evaluate(() => document.getElementById("save").disabled), true);
+  ok("with the reason shown", (await h.page.textContent("#why"))?.includes("Nothing is trimmed yet"));
+  await h.done();
+}
+
+async function fastStaysOffAcrossADrag() {
+  // paint() and the chat toggle both wrote fast.disabled; paint() runs on
+  // every drag, so Fast came back to life on the first nudge of a handle.
+  const h = await open("trim.html", scenario());
+  await ready(h.page);
+  await h.page.waitForTimeout(200);
+  eq("Fast is off while hiding is on", await h.page.evaluate(() => document.getElementById("fast").disabled), true);
+
+  const box = await h.page.locator("#track").boundingBox();
+  const he = await h.page.locator("#handle-end").boundingBox();
+  await h.page.mouse.move(he.x + he.width / 2, he.y + he.height / 2);
+  await h.page.mouse.down();
+  await h.page.mouse.move(box.x + box.width * 0.6, he.y + he.height / 2, { steps: 12 });
+  await h.page.mouse.up();
+  await h.page.waitForTimeout(200);
+  eq("and is still off after dragging a handle", await h.page.evaluate(() => document.getElementById("fast").disabled), true);
+  await h.done();
+}
+
+async function draggingAHandleEnablesSaving() {
+  const h = await open("trim.html", scenario({
+    chat_hiding: { available: false, on: false, region: null, reason: "" },
+  }));
+  await ready(h.page);
+  await h.page.waitForTimeout(200);
+  eq("Save starts refused", await h.page.evaluate(() => document.getElementById("save").disabled), true);
+
+  const box = await h.page.locator("#track").boundingBox();
+  const he = await h.page.locator("#handle-end").boundingBox();
+  await h.page.mouse.move(he.x + he.width / 2, he.y + he.height / 2);
+  await h.page.mouse.down();
+  await h.page.mouse.move(box.x + box.width * 0.6, he.y + he.height / 2, { steps: 12 });
+  await h.page.mouse.up();
+  await h.page.waitForTimeout(200);
+  eq("and a drag turns it on", await h.page.evaluate(() => document.getElementById("save").disabled), false);
+  eq("the reason goes with it", await h.page.evaluate(() => document.getElementById("why").hidden), true);
+  await h.done();
+}
+
 async function fastAndHidingStayExclusive() {
   // A stream copy cannot paint over anything. The backend refuses the pair;
   // the front end must not offer it.
   const h = await open("trim.html", scenario());
   await ready(h.page);
+  await h.page.waitForTimeout(200);
   eq("Fast is off while hiding is on", await h.page.evaluate(() => document.getElementById("fast").disabled), true);
+
+  // Trimmed as well as unhidden: a fast copy of a whole untrimmed clip is a
+  // file copy, so it stays refused for that reason on its own.
   await h.page.uncheck("#hide-chat");
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 12; });
+  await h.page.waitForTimeout(200);
+  await h.page.click("#set-end");
   await h.page.waitForTimeout(100);
-  eq("and back on when hiding is off", await h.page.evaluate(() => document.getElementById("fast").disabled), false);
+  eq("and back on once hiding is off and something is trimmed", await h.page.evaluate(() => document.getElementById("fast").disabled), false);
   await h.done();
 }
 
@@ -235,6 +297,9 @@ async function theDefaultHotkeysAreClean() {
     theChatBlackoutIsShown,
     unavailableChatHidingSaysWhy,
     fastAndHidingStayExclusive,
+    theWholeClipCanStillHaveItsChatHidden,
+    fastStaysOffAcrossADrag,
+    draggingAHandleEnablesSaving,
     aFailedTrimLeavesTheWindowUsable,
     theSourceIsReleasedBeforeItIsReplaced,
     gameKeyHotkeysAreFlagged,

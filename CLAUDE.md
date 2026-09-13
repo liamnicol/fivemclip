@@ -124,6 +124,21 @@ past the end makes the browser go and find it. The trimmer used to give up on
 the spot, which made it a dead end for exactly the interrupted sessions people
 most want to salvage.
 
+**One function decides what is disabled, and says why.** `paint()` and the chat
+toggle both wrote `fast.disabled` and disagreed; `paint()` runs on every drag,
+so turning on Hide chat disabled Fast and the next nudge of a handle quietly
+re-enabled it. `refusal()` is the single answer for Save, Save a copy and Fast,
+and its text is shown in `#why` - a button that is grey for no stated reason is
+indistinguishable from a broken one, which is what "the trimmer will not save"
+turned out to be.
+
+**A whole-clip trim is not always a no-op.** Save was disabled whenever the
+selection covered everything, on the reasoning that writing a clip over itself
+changes nothing. It does when `hide_chat` is on: that re-encodes every frame
+with the chat painted out, which is the commonest reason to open the trimmer at
+all. Fast stays refused there, because a stream copy of the whole file really is
+a copy.
+
 **Hiding the chat and a fast trim are mutually exclusive.** A stream copy cannot
 paint over anything. `trim()` refuses the combination with the other argument
 validation, before it touches the disk, and the trimmer disables Fast rather

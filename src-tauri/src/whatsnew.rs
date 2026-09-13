@@ -22,6 +22,9 @@ pub const RELEASES: &[Release] = &[
     Release {
         version: "0.2.17",
         lines: &[
+            "The trimmer will save again. Save was greyed out until you had trimmed something, which meant blacking out the chat across a whole clip - the commonest reason to open it - was refused outright. That re-encodes every frame, so it is real work and is allowed now.",
+            "When Save is unavailable it says why, instead of being grey for no stated reason.",
+            "Fast trim no longer comes back to life mid-drag. Turning on Hide chat disabled it correctly and the next nudge of a handle silently re-enabled it, offering the one combination the app refuses.",
             "If ffmpeg cannot run, the app says which ffmpeg.exe it picked and why Windows will not start it, instead of passing on \"%1 is not a valid Win32 application\". That message named neither the file nor which of the three places it had been found in.",
             "Every log now opens with the ffmpeg it chose and the version that binary reports - or that it cannot be run, or that none was found at all. The path had never been written down anywhere, so there was no way to answer \"which ffmpeg?\" after the fact.",
         ],
