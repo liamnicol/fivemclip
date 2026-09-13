@@ -39,12 +39,23 @@ async function load() {
     // Cache-busted: every capture overwrites the same file, so without this the
     // overlay shows the screen as it was the last time it opened.
     frame.src = `${convertFileSrc(path)}?v=${Date.now()}`;
+    // Waited for, not assumed. The window is hidden until this resolves, so
+    // that the overlay appears with the frozen screen already painted instead
+    // of appearing white and filling in afterwards. decode() is the part that
+    // actually finishes the work; onload alone can still leave a frame to
+    // paint. On reuse it also matters for a second reason: until the new image
+    // is decoded the old one is still on screen, so showing early would flash
+    // the previous capture.
+    await frame.decode().catch(() => {});
   } catch (error) {
     const box = document.getElementById("error");
     box.textContent = String(error);
     box.hidden = false;
     setTimeout(cancel, 2500);
   }
+  // Shown either way: an overlay that stays hidden when something went wrong is
+  // a hotkey that does nothing, with the reason invisible behind it.
+  invoke("region_ready");
 }
 
 /// Where the image actually sits inside the window, and how its displayed

@@ -305,23 +305,12 @@ pub fn start_region_capture(app: AppHandle) {
 /// and doing that on the thread that draws the window froze the whole app.
 pub fn begin_region_capture(app: AppHandle) {
     crate::diagnostics::thread("region-capture", move || {
-        // Reused, not rebuilt. Destroying and recreating a fullscreen
-        // always-on-top webview on every capture raced with itself: the close
-        // is asynchronous, so the next capture could find no window through the
-        // manager while the label was still taken, and build() failed in under
-        // a millisecond. The log showed exactly that - two overlay builds
-        // reported as 0 ms, which nothing real does.
-        if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
-            crate::diagnostics::log("reusing the region overlay");
-            // It has to be told, or it shows the frame from last time: the
-            // frozen screenshot is always written to the same path, and the
-            // page only loads it once.
-            let _ = existing.emit("region:open", ());
-            let _ = existing.show();
-            let _ = existing.set_focus();
-            return;
-        }
-
+        // Freeze the screen first, every single time, reused overlay or not.
+        // Reuse used to return before this, so the second capture onwards found
+        // no frame at all - the one before it had deleted the file on its way
+        // out - and the overlay opened onto "The captured frame is missing".
+        // The log says so plainly: "reusing the region overlay" with no
+        // "freezing the screen" span in front of it.
         let state = app.state::<AppState>();
         let prepared = (|| -> Result<(), String> {
             let ffmpeg = state.ffmpeg()?.clone();
@@ -343,6 +332,23 @@ pub fn begin_region_capture(app: AppHandle) {
             return;
         }
 
+        // Reused, not rebuilt. Destroying and recreating a fullscreen
+        // always-on-top webview on every capture raced with itself: the close
+        // is asynchronous, so the next capture could find no window through the
+        // manager while the label was still taken.
+        //
+        // Neither path shows the window here. It is shown by `region_ready`,
+        // once the page has the frozen frame actually painted - see there.
+        if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
+            crate::diagnostics::log("reusing the region overlay");
+            // It has to be told, or it shows the frame from last time: the
+            // frozen screenshot is always written to the same path, and the
+            // page only loads it once.
+            let _ = existing.emit("region:open", ());
+            watch_for_a_stuck_overlay(&app);
+            return;
+        }
+
         // Built from this background thread, NOT hopped onto the main one.
         // build() waits for the event loop to create the window, so calling it
         // on the event loop thread deadlocks - which is exactly what an earlier
@@ -359,13 +365,53 @@ pub fn begin_region_capture(app: AppHandle) {
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
+            // Hidden until it has something to show. A webview paints white
+            // before its first frame, and a fullscreen white flash over a dark
+            // game is the single most visible thing this app does.
+            .visible(false)
             .build()
         });
 
-        if let Err(e) = built {
-            notify(&app, "Could not open the selection overlay", &e.to_string());
+        match built {
+            Ok(_) => watch_for_a_stuck_overlay(&app),
+            Err(e) => notify(&app, "Could not open the selection overlay", &e.to_string()),
         }
     });
+}
+
+/// Show the overlay anyway if the page never says it is ready.
+///
+/// Without this, a page that fails to load leaves a hidden window and a hotkey
+/// that looks dead. The frozen frame still being on disk is what says the
+/// capture is outstanding: finishing it and cancelling both delete the file, so
+/// a still-present frame and a still-hidden window means nothing happened.
+fn watch_for_a_stuck_overlay(app: &AppHandle) {
+    let app = app.clone();
+    crate::diagnostics::thread("region-watchdog", move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let Some(window) = app.get_webview_window(REGION_WINDOW) else {
+            return;
+        };
+        if window.is_visible().unwrap_or(false) || !shot::region_frame_path().exists() {
+            return;
+        }
+        crate::diagnostics::log("the region overlay never reported ready; showing it anyway");
+        let _ = window.show();
+        let _ = window.set_focus();
+    });
+}
+
+/// The page has the frozen frame painted; put the window on screen.
+///
+/// Showing it any earlier is what the white flash was: the window appeared, and
+/// only then did the webview paint - white first, because that is a webview's
+/// background until a page gives it another one.
+#[tauri::command]
+pub fn region_ready(app: AppHandle) {
+    if let Some(window) = app.get_webview_window(REGION_WINDOW) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 #[derive(Serialize)]

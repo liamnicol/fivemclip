@@ -89,10 +89,31 @@ input shows a readable label and carries the accelerator in `dataset.combo`;
 
 **Long-lived windows are hidden and reused, never closed and rebuilt.** `close()`
 is asynchronous, so the next open can find no window through the manager while
-the label is still taken, and `build()` fails in under a millisecond - a 0 ms
-span in the log is that, not a fast build. Reused windows must be told to
-reload: the editor takes `editor:open`, the region overlay `region:open`. The
-overlay also has to reset its `submitted` guard, or its second use is inert.
+the label is still taken. Reused windows must be told to reload: the editor
+takes `editor:open`, the region overlay `region:open`. The overlay also has to
+reset its `submitted` guard, or its second use is inert.
+
+A correction to what used to be written here: a 0 ms overlay build is **not**
+evidence of a failed build. `build()` returns once the window exists, without
+waiting for the webview to paint, so it is genuinely that fast. A later log
+showed a 0 ms build followed by reuses that found the window perfectly well.
+
+**Everything a reused overlay needs must be prepared before the reuse branch,
+not after it.** The region capture froze the screen only on the path that built
+the window, so every capture after the first opened onto "The captured frame is
+missing" - the one before it deleted the frame on its way out. The tell in the
+log is "reusing the region overlay" with no "freezing the screen" span in front
+of it.
+
+**The region overlay is built hidden and shown by `region_ready`.** A webview
+paints white before its first frame, and a fullscreen white flash over a dark
+game is the most visible thing this app does. The page calls `region_ready`
+only after `img.decode()` resolves, so the window appears with the frozen screen
+already on it - on reuse that also stops the *previous* capture flashing up,
+since the old image stays on screen until the new one decodes. `region_ready` is
+called on the error path too, or a failure is an invisible window and a hotkey
+that looks dead, and `watch_for_a_stuck_overlay` shows it anyway after 1.5s if
+the page never reports at all.
 
 **Spawn threads through `diagnostics::thread`, not `std::thread::spawn`.** Every
 log line carries its thread name, and a log full of "unnamed" says nothing about
