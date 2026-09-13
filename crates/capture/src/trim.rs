@@ -17,6 +17,7 @@
 //! nothing behind. Fast is offered because re-encoding a three hour session is
 //! not a thing anybody will wait for.
 
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -88,6 +89,30 @@ pub fn bitrate_to_fit(bytes: u64, seconds: f64) -> u32 {
     (budget - AUDIO_KBPS as f64).max(0.0) as u32
 }
 
+/// How far along an encode is.
+///
+/// Reported because a re-encode of a long session is minutes of nothing: the
+/// button said "Trimming…" and then said it for another four minutes, which is
+/// indistinguishable from a hang. The numbers come from ffmpeg itself rather
+/// than from a timer, so they stay honest when the encoder slows down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Progress {
+    /// 0.0 to 1.0 of the requested duration.
+    pub fraction: f64,
+    /// Multiple of real time, as ffmpeg reports it: 2.0 means two seconds of
+    /// footage encoded per second. `None` until it has encoded enough to say.
+    pub speed: Option<f64>,
+}
+
+impl Progress {
+    /// Seconds left, if that can be worked out yet.
+    pub fn eta_seconds(&self, duration: f64) -> Option<f64> {
+        let speed = self.speed.filter(|s| *s > 0.0)?;
+        let left = (duration - self.fraction * duration).max(0.0);
+        Some(left / speed)
+    }
+}
+
 /// Cut `source` down to `start`..`end`, in seconds from the start of the file.
 ///
 /// Writes beside the source and only then moves the result into place, so a
@@ -98,6 +123,18 @@ pub fn trim(
     pipeline: Option<&Pipeline>,
     source: &Path,
     request: &Request,
+) -> Result<PathBuf, String> {
+    trim_with_progress(ffmpeg_path, settings, pipeline, source, request, &|_| {})
+}
+
+/// The same, reporting how far along it is as it goes.
+pub fn trim_with_progress(
+    ffmpeg_path: &Path,
+    settings: &Settings,
+    pipeline: Option<&Pipeline>,
+    source: &Path,
+    request: &Request,
+    progress: &(dyn Fn(Progress) + Sync),
 ) -> Result<PathBuf, String> {
     let Request {
         start,
@@ -178,6 +215,7 @@ pub fn trim(
             duration,
             hide_chat.as_ref(),
             &scratch,
+            progress,
         ) {
             Ok(()) => {
                 let moved = std::fs::rename(&scratch, &target)
@@ -225,6 +263,33 @@ fn output_path(source: &Path, replace: bool) -> PathBuf {
     candidate
 }
 
+/// One `key=value` line of `-progress` output, folded into what we track.
+///
+/// ffmpeg writes a block of these every second or so, ending with
+/// `progress=continue` or `progress=end`. Only two lines matter.
+fn absorb(line: &str, duration: f64, at: &mut f64, speed: &mut Option<f64>) -> bool {
+    if let Some(v) = line.strip_prefix("out_time_us=") {
+        // Microseconds. `out_time_ms` exists too and is *also* microseconds -
+        // a misnamed field kept for compatibility - so it is read the same way
+        // rather than divided by a thousand, which would report a trim as
+        // finishing a thousand times too fast.
+        if let Ok(us) = v.trim().parse::<i64>() {
+            *at = (us.max(0) as f64) / 1e6;
+            return true;
+        }
+    } else if let Some(v) = line.strip_prefix("out_time_ms=") {
+        if let Ok(us) = v.trim().parse::<i64>() {
+            *at = (us.max(0) as f64) / 1e6;
+            return true;
+        }
+    } else if let Some(v) = line.strip_prefix("speed=") {
+        // "1.23x", or "N/A" before it has encoded enough to know.
+        *speed = v.trim().trim_end_matches('x').trim().parse::<f64>().ok();
+    }
+    let _ = duration;
+    false
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run(
     ffmpeg_path: &Path,
@@ -235,20 +300,61 @@ fn run(
     duration: f64,
     hide_chat: Option<&ChatRegion>,
     out: &Path,
+    progress: &(dyn Fn(Progress) + Sync),
 ) -> Result<(), String> {
-    let output = ffmpeg::command(ffmpeg_path)
+    let mut child = ffmpeg::command(ffmpeg_path)
         .args(args(
             settings, encoder, source, start, duration, hide_chat, out,
         ))
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
         .map_err(|e| ffmpeg::spawn_error(ffmpeg_path, &e))?;
 
-    if output.status.success() && out.is_file() {
+    // Into the job object, so a trim that is still running when the app dies
+    // does not carry on encoding to a file nobody is waiting for.
+    crate::reaper::adopt(&child);
+
+    // Drained on its own thread, and that is not optional: ffmpeg writes enough
+    // to stderr over a long encode to fill the pipe, and a full pipe blocks the
+    // writer - so reading stdout to completion first would wait for a process
+    // that is itself waiting for us.
+    let mut stderr = child.stderr.take();
+    let draining = std::thread::spawn(move || {
+        let mut buffer = String::new();
+        if let Some(pipe) = stderr.as_mut() {
+            let _ = pipe.read_to_string(&mut buffer);
+        }
+        buffer
+    });
+
+    if let Some(stdout) = child.stdout.take() {
+        let (mut at, mut speed) = (0.0_f64, None);
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if absorb(&line, duration, &mut at, &mut speed) {
+                let fraction = if duration > 0.0 {
+                    (at / duration).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                progress(Progress { fraction, speed });
+            }
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("could not wait for ffmpeg: {e}"))?;
+    let stderr = draining.join().unwrap_or_default();
+
+    if status.success() && out.is_file() {
+        progress(Progress {
+            fraction: 1.0,
+            speed: None,
+        });
         return Ok(());
     }
-    Err(ffmpeg::explain(&String::from_utf8_lossy(&output.stderr)))
+    Err(ffmpeg::explain(&stderr))
 }
 
 /// `-ss` before `-i` seeks by keyframe and then decodes forward to the exact
@@ -269,6 +375,12 @@ fn args(
         "-hide_banner".into(),
         "-loglevel".into(),
         "error".into(),
+        // Machine-readable progress on stdout, and the human kind off stderr.
+        // Without -nostats the same numbers also go to stderr, where they push
+        // whatever went wrong out of the tail that `explain` reads.
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
         "-y".into(),
         "-ss".into(),
         format!("{start:.3}"),
@@ -756,6 +868,63 @@ mod ffmpeg_tests {
 
     /// The scratch file must not survive a failure, and the original must be
     /// exactly as it was.
+    /// The button said "Trimming…" and then went on saying it. Progress has to
+    /// actually arrive, climb, and finish at 1.0 - checked against a real
+    /// encode, because the numbers come out of ffmpeg rather than a timer.
+    #[test]
+    fn a_real_trim_reports_its_progress() {
+        let Some(ffmpeg) = ffmpeg_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_FFMPEG");
+            return;
+        };
+        let Some(clip) = clip_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_CLIP");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("fivemclip-progress-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("Clip.mp4");
+        std::fs::copy(&clip, &source).unwrap();
+
+        let seen = std::sync::Mutex::new(Vec::<Progress>::new());
+        let out = trim_with_progress(
+            &ffmpeg,
+            &Settings::default(),
+            None,
+            &source,
+            &Request {
+                start: 0.0,
+                end: 8.0,
+                replace: false,
+                fast: false,
+                fit_bytes: None,
+                hide_chat: None,
+            },
+            &|p| seen.lock().unwrap().push(p),
+        )
+        .expect("the trim itself must work");
+
+        let seen = seen.into_inner().unwrap();
+        assert!(
+            seen.len() > 1,
+            "only {} progress reports - nothing to show a user",
+            seen.len()
+        );
+        let fractions: Vec<f64> = seen.iter().map(|p| p.fraction).collect();
+        assert!(
+            fractions.windows(2).all(|w| w[1] >= w[0]),
+            "progress went backwards: {fractions:?}"
+        );
+        assert!(
+            fractions.iter().all(|f| (0.0..=1.0).contains(f)),
+            "out of range: {fractions:?}"
+        );
+        assert_eq!(seen.last().map(|p| p.fraction), Some(1.0), "{fractions:?}");
+        assert!(out.is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_failed_trim_leaves_the_original_alone() {
         let Some(ffmpeg) = ffmpeg_for_test() else {
@@ -796,6 +965,67 @@ mod ffmpeg_tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(left, vec!["Clip.mp4"], "no scratch file may be left behind");
+    }
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+
+    /// `out_time_ms` is misnamed: it carries microseconds, like `out_time_us`.
+    /// Treating it as milliseconds reports a trim as finishing a thousand times
+    /// too fast, which looks like an instant trim and a stuck file.
+    #[test]
+    fn out_time_ms_is_microseconds_too() {
+        let (mut at, mut speed) = (0.0, None);
+        assert!(absorb("out_time_us=2500000", 10.0, &mut at, &mut speed));
+        assert!((at - 2.5).abs() < 1e-9, "{at}");
+
+        let (mut at, mut speed) = (0.0, None);
+        assert!(absorb("out_time_ms=2500000", 10.0, &mut at, &mut speed));
+        assert!((at - 2.5).abs() < 1e-9, "{at}");
+    }
+
+    #[test]
+    fn speed_is_read_and_survives_not_knowing_yet() {
+        let (mut at, mut speed) = (0.0, None);
+        absorb("speed=2.75x", 10.0, &mut at, &mut speed);
+        assert_eq!(speed, Some(2.75));
+
+        absorb("speed=N/A", 10.0, &mut at, &mut speed);
+        assert_eq!(speed, None, "N/A must not parse as a number");
+    }
+
+    #[test]
+    fn a_negative_timestamp_does_not_go_backwards() {
+        let (mut at, mut speed) = (5.0, None);
+        absorb("out_time_us=-42", 10.0, &mut at, &mut speed);
+        assert_eq!(at, 0.0);
+    }
+
+    #[test]
+    fn the_estimate_needs_a_speed_to_exist() {
+        let half = Progress {
+            fraction: 0.5,
+            speed: None,
+        };
+        assert_eq!(half.eta_seconds(60.0), None);
+
+        let moving = Progress {
+            fraction: 0.5,
+            speed: Some(2.0),
+        };
+        // Half of sixty seconds left, at twice real time.
+        assert_eq!(moving.eta_seconds(60.0), Some(15.0));
+    }
+
+    #[test]
+    fn a_stalled_encoder_does_not_promise_an_eternity_or_divide_by_zero() {
+        let stalled = Progress {
+            fraction: 0.1,
+            speed: Some(0.0),
+        };
+        assert_eq!(stalled.eta_seconds(60.0), None);
     }
 }
 

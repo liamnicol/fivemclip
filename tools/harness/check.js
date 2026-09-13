@@ -195,6 +195,48 @@ async function fastAndHidingStayExclusive() {
   await h.done();
 }
 
+async function aTrimShowsHowFarAlongItIs() {
+  // "Trimming…" and then nothing for four minutes is indistinguishable from a
+  // hang, which is what a long re-encode looked like.
+  let release;
+  const held = new Promise((r) => (release = r));
+  const h = await open("trim.html", scenario({
+    // Held open so the in-flight state can be inspected, the way a real
+    // re-encode of a long session is held open for minutes.
+    trim_clip: () => new Promise(() => {}),
+    chat_hiding: { available: false, on: false, region: null, reason: "" },
+  }));
+  await ready(h.page);
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 12; });
+  await h.page.waitForTimeout(200);
+  await h.page.click("#set-end");
+  await h.page.click("#save");
+  await h.page.waitForTimeout(200);
+
+  eq("the bar appears as soon as it starts", await h.page.evaluate(() => document.getElementById("progress").hidden), false);
+  eq("starting at zero", await h.page.evaluate(() => document.getElementById("progress-fill").style.width), "0%");
+
+  await h.emit("trim:progress", { fraction: 0.42, eta_seconds: 95 });
+  await h.page.waitForTimeout(100);
+  eq("it follows what the backend reports", await h.page.evaluate(() => document.getElementById("progress-fill").style.width), "42%");
+  const label = await h.page.textContent("#progress-label");
+  ok("and says how long is left", label.includes("42%") && label.includes("1m 35s"));
+
+  await h.emit("trim:progress", { fraction: 0.98, eta_seconds: 1 });
+  await h.page.waitForTimeout(100);
+  ok("near the end it stops pretending to be precise", (await h.page.textContent("#progress-label")).includes("almost done"));
+
+  // No estimate yet is not a reason to show a broken one.
+  await h.emit("trim:progress", { fraction: 0.1, eta_seconds: null });
+  await h.page.waitForTimeout(100);
+  const bare = await h.page.textContent("#progress-label");
+  ok("and says nothing rather than NaN before it can estimate", bare.includes("10%") && !/NaN|undefined|null/.test(bare));
+
+  release();
+  await held;
+  await h.done();
+}
+
 async function aFailedTrimLeavesTheWindowUsable() {
   const h = await open("trim.html", scenario({
     trim_clip: () => { throw new Error("ffmpeg said no"); },
@@ -302,6 +344,7 @@ async function theDefaultHotkeysAreClean() {
     draggingAHandleEnablesSaving,
     aFailedTrimLeavesTheWindowUsable,
     theSourceIsReleasedBeforeItIsReplaced,
+    aTrimShowsHowFarAlongItIs,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
   ]) {

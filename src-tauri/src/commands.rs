@@ -1003,6 +1003,19 @@ pub fn trim_target(state: State<AppState>) -> Option<String> {
 /// Async, and the ffmpeg run is moved off the async runtime as well: this is
 /// the one operation in the app that re-encodes, so it is measured in seconds
 /// rather than milliseconds.
+/// How far a trim has got, for the trimmer's progress bar.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct TrimProgress {
+    /// 0.0 to 1.0.
+    pub fraction: f64,
+    /// Seconds left, once there is enough to base that on.
+    pub eta_seconds: Option<f64>,
+}
+
+/// The least time between progress events. Eight a second is smooth to watch
+/// and cheap enough to ignore.
+const THROTTLE: std::time::Duration = std::time::Duration::from_millis(125);
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn trim_clip(
@@ -1036,19 +1049,40 @@ pub async fn trim_clip(
         if !library::is_managed(&settings, &source) {
             return Err("That file is not in the FiveMClip folders.".to_string());
         }
-        fivemclip_capture::trim::trim(
-            &ffmpeg,
-            &settings,
-            pipeline,
-            &source,
-            &fivemclip_capture::trim::Request {
-                start,
-                end,
-                replace,
-                fast,
-                fit_bytes,
-                hide_chat: hide_chat.then_some(settings.chat_region).flatten(),
-            },
+        let request = fivemclip_capture::trim::Request {
+            start,
+            end,
+            replace,
+            fast,
+            fit_bytes,
+            hide_chat: hide_chat.then_some(settings.chat_region).flatten(),
+        };
+        let duration = (end - start).max(0.0);
+
+        // Throttled. ffmpeg reports several times a second and every emit
+        // crosses to the webview; a progress bar redrawn 20 times a second is
+        // no more informative than one redrawn 8 times and costs the encode.
+        let last = parking_lot::Mutex::new(std::time::Instant::now() - THROTTLE);
+        let emit = |p: fivemclip_capture::trim::Progress| {
+            let done = p.fraction >= 1.0;
+            {
+                let mut last = last.lock();
+                if !done && last.elapsed() < THROTTLE {
+                    return;
+                }
+                *last = std::time::Instant::now();
+            }
+            let _ = handle.emit(
+                "trim:progress",
+                TrimProgress {
+                    fraction: p.fraction,
+                    eta_seconds: p.eta_seconds(duration),
+                },
+            );
+        };
+
+        fivemclip_capture::trim::trim_with_progress(
+            &ffmpeg, &settings, pipeline, &source, &request, &emit,
         )
     })
     .await

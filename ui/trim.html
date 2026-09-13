@@ -27,6 +27,13 @@
       <button class="btn btn-primary" id="save">Save</button>
     </header>
 
+    <!-- Shown only while a trim runs. A determinate bar, because ffmpeg says
+         how far along it is and a spinner would be throwing that away. -->
+    <div class="progress" id="progress" hidden>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <span class="progress-label" id="progress-label">Trimming…</span>
+    </div>
+
     <main id="stage">
       <video id="video" preload="metadata" playsinline></video>
       <!-- What the blackout will cover, drawn over the picture while the

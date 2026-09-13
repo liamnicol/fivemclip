@@ -431,6 +431,32 @@ function askAboutChat(path) {
 
 /* ---------------- saving ---------------- */
 
+/** "about 2m 10s left", or nothing while there is no basis for saying. */
+function remaining(seconds) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "";
+  if (seconds < 3) return "almost done";
+  if (seconds < 60) return `about ${Math.round(seconds)}s left`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `about ${m}m ${String(s).padStart(2, "0")}s left`;
+}
+
+function showProgress(fraction, etaSeconds) {
+  $("progress").hidden = false;
+  const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
+  $("progress-fill").style.width = `${pct}%`;
+  const left = remaining(etaSeconds);
+  $("progress-label").textContent = left ? `Trimming… ${pct}% · ${left}` : `Trimming… ${pct}%`;
+}
+
+// The backend reports out of ffmpeg's own -progress output, throttled to eight
+// a second. Registered once, at load: a listener added per save would stack up
+// one more copy on every attempt.
+listen("trim:progress", (event) => {
+  const { fraction, eta_seconds } = event.payload ?? {};
+  if (typeof fraction === "number") showProgress(fraction, eta_seconds);
+});
+
 async function save(replace, fast = false, fitDiscord = false, thenSend = false) {
   const buttons = document.querySelectorAll(".bar .btn");
   const pressed = fitDiscord ? $("discord") : fast ? $("fast") : replace ? $("save") : $("save-copy");
@@ -445,6 +471,10 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
   video.pause();
   video.removeAttribute("src");
   video.load();
+  // From zero, and before the first report arrives: a re-encode spends its
+  // first seconds opening the file, and a bar that only appears once ffmpeg
+  // speaks leaves exactly the silence this is here to remove.
+  showProgress(0, null);
   try {
     const channel = chosenChannel();
     const saved = await invoke("trim_clip", {
@@ -467,6 +497,7 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
     getCurrentWindow().close();
   } catch (error) {
     alert(String(error));
+    $("progress").hidden = true;
     buttons.forEach((b) => (b.disabled = false));
     pressed.textContent = label;
     // Put the clip back. The window stays open after a failure, and without

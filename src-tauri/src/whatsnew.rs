@@ -22,6 +22,7 @@ pub const RELEASES: &[Release] = &[
     Release {
         version: "0.2.17",
         lines: &[
+            "Trimming shows a progress bar and how long is left. It used to say \"Trimming…\" and go on saying it - for minutes, on a long session - with no way to tell a slow encode from a hung one. The numbers come from ffmpeg itself, so they stay honest when it slows down.",
             "The trimmer will save again. Save was greyed out until you had trimmed something, which meant blacking out the chat across a whole clip - the commonest reason to open it - was refused outright. That re-encodes every frame, so it is real work and is allowed now.",
             "When Save is unavailable it says why, instead of being grey for no stated reason.",
             "Fast trim no longer comes back to life mid-drag. Turning on Hide chat disabled it correctly and the next nudge of a handle silently re-enabled it, offering the one combination the app refuses.",

@@ -139,6 +139,22 @@ with the chat painted out, which is the commonest reason to open the trimmer at
 all. Fast stays refused there, because a stream copy of the whole file really is
 a copy.
 
+**A long encode must say how far along it is.** `trim()` blocked on `.output()`
+and the button just said "Trimming…", which on a multi-minute re-encode is
+indistinguishable from a hang. `trim_with_progress` spawns instead, asks ffmpeg
+for `-progress pipe:1 -nostats`, and reports out of ffmpeg's own numbers rather
+than a timer, so the bar slows down when the encoder does. `trim()` is still
+there and delegates with a no-op, which is why none of its tests had to change.
+
+Two things that will bite whoever touches this next. **`out_time_ms` carries
+microseconds**, not milliseconds - a misnamed field kept for compatibility - so
+it is divided by a million like `out_time_us`; dividing by a thousand reports a
+trim as finishing instantly. And **stderr has to be drained on its own thread**:
+ffmpeg writes enough over a long encode to fill the pipe, and a full pipe blocks
+the writer, so reading stdout to completion first waits on a process that is
+waiting on us. `-nostats` matters too - without it the same progress numbers go
+to stderr and push whatever went wrong out of the tail `explain` reads.
+
 **Hiding the chat and a fast trim are mutually exclusive.** A stream copy cannot
 paint over anything. `trim()` refuses the combination with the other argument
 validation, before it touches the disk, and the trimmer disables Fast rather
