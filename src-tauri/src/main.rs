@@ -141,6 +141,25 @@ fn main() {
                 },
             ));
 
+            // Which ffmpeg, and does it actually run. `find_ffmpeg` takes the
+            // first file by that name in the app folder, beside the exe, or on
+            // PATH, and only ever checked that the file existed - so a
+            // truncated download or a stub got picked up and handed to
+            // CreateProcess, and the first anyone knew was "%1 is not a valid
+            // Win32 application" out of a trim, with nothing anywhere saying
+            // which of the three it had chosen.
+            match app_state.ffmpeg.as_deref() {
+                Some(path) => match fivemclip_capture::ffmpeg::identify(path) {
+                    Ok(version) => {
+                        diagnostics::log(format!("ffmpeg: {} · {version}", path.display()))
+                    }
+                    Err(why) => diagnostics::log(format!("ffmpeg is unusable: {why}")),
+                },
+                None => diagnostics::log(
+                    "ffmpeg: not found in the app folder, beside the exe, or on PATH",
+                ),
+            }
+
             app.manage(app_state);
 
             let handle = app.handle().clone();

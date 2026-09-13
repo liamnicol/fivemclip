@@ -21,6 +21,50 @@ pub fn command(exe: &Path) -> Command {
 
 /// Locate ffmpeg. We ship it next to the binary; PATH is only a developer
 /// convenience so the app is runnable from a checkout.
+/// Why a spawn failed, in terms that name the file rather than the errno.
+///
+/// Windows raises ERROR_BAD_EXE_FORMAT - "%1 is not a valid Win32 application",
+/// os error 193 - when the thing it was asked to launch is not an executable at
+/// all: a truncated download, an HTML error page saved under the name, a stub,
+/// or a 32-bit binary. `find_ffmpeg` only ever checked that a file by the right
+/// name existed, so any of those got picked up and handed to CreateProcess, and
+/// what reached the user was the raw OS error with no clue which of the three
+/// candidate locations it had come from.
+pub fn spawn_error(exe: &Path, e: &std::io::Error) -> String {
+    const BAD_EXE_FORMAT: i32 = 193;
+    if e.raw_os_error() == Some(BAD_EXE_FORMAT) {
+        return format!(
+            "{} is not a working ffmpeg - Windows will not run it. It is usually a              truncated or failed download. Replace it with a real ffmpeg.exe, or              reinstall FiveMClip.",
+            exe.display()
+        );
+    }
+    format!("could not run ffmpeg ({}): {e}", exe.display())
+}
+
+/// Run `-version` and return its first line.
+///
+/// Called once at startup so the log says which ffmpeg was picked and whether
+/// it runs at all. A binary that cannot be launched used to produce nothing
+/// anywhere until the first trim or screenshot failed with a bare errno.
+pub fn identify(exe: &Path) -> Result<String, String> {
+    let output = command(exe)
+        .args(["-hide_banner", "-version"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| spawn_error(exe, &e))?;
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    match text.lines().next() {
+        Some(line) if !line.trim().is_empty() => Ok(line.trim().to_string()),
+        // Launched and said nothing, which no real build does.
+        _ => Err(format!(
+            "{} ran but did not report a version - it is probably not ffmpeg.",
+            exe.display()
+        )),
+    }
+}
+
 pub fn find_ffmpeg() -> Option<PathBuf> {
     let name = if cfg!(windows) {
         "ffmpeg.exe"
@@ -391,6 +435,43 @@ pub fn select_pipeline(ffmpeg: &Path, s: &Settings) -> ProbeReport {
         chosen,
         chosen_label,
         attempts,
+    }
+}
+
+#[cfg(test)]
+mod spawn_tests {
+    use super::*;
+
+    /// The dialog that started this: "could not run ffmpeg: %1 is not a valid
+    /// Win32 application. (os error 193)" named neither the file nor the fix.
+    #[test]
+    fn a_bad_executable_names_the_file_and_the_likely_cause() {
+        let e = std::io::Error::from_raw_os_error(193);
+        let message = spawn_error(Path::new("E:\\app\\bin\\ffmpeg.exe"), &e);
+        assert!(message.contains("E:\\app\\bin\\ffmpeg.exe"), "{message}");
+        assert!(message.contains("truncated"), "{message}");
+        assert!(!message.contains("os error"), "{message}");
+    }
+
+    /// Anything else keeps the underlying error - it is the only information
+    /// there is - but still says which file it was trying to run.
+    #[test]
+    fn other_failures_keep_the_error_and_gain_the_path() {
+        let e = std::io::Error::from_raw_os_error(2);
+        let message = spawn_error(Path::new("C:\\nope\\ffmpeg.exe"), &e);
+        assert!(message.contains("C:\\nope\\ffmpeg.exe"), "{message}");
+    }
+
+    #[test]
+    fn identifying_something_that_is_not_an_executable_fails_rather_than_panics() {
+        let dir = std::env::temp_dir().join(format!("fivemclip-id-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join("ffmpeg-not-really");
+        // What a failed download leaves behind.
+        std::fs::write(&fake, b"<!doctype html><title>404</title>").unwrap();
+
+        assert!(identify(&fake).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

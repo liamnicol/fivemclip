@@ -107,6 +107,17 @@ thumbnailed, playing up to the moment of death. `trim()` had always used a
 scratch file; this did not. Scratch names are dotted, the library skips dotted
 names, and `sweep_scratch` clears leftovers at startup.
 
+**`find_ffmpeg` picks the first file by that name, not the first working one.**
+App folder, beside the exe, then PATH - and `is_file()` is the whole test, so a
+truncated download, a stub or an HTML error page saved under the name all get
+handed to CreateProcess. Windows answers ERROR_BAD_EXE_FORMAT, os error 193,
+"%1 is not a valid Win32 application", and that used to reach the user verbatim
+out of whatever operation happened to run ffmpeg first - naming neither the file
+nor which of the three places it came from. `ffmpeg::spawn_error` turns it into
+something actionable and every spawn site goes through it; `ffmpeg::identify`
+runs `-version` at startup so the log always says which binary was chosen and
+whether it works.
+
 **A durationless recording is not an unreadable one.** `video.duration` comes
 back `Infinity` for a file whose header never got a duration written. Seeking
 past the end makes the browser go and find it. The trimmer used to give up on

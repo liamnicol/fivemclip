@@ -28,6 +28,7 @@ pub const RELEASES: &[Release] = &[
             "If no chat region has been set, the trimmer says so instead of hiding the option. It used to disappear entirely, which was impossible to tell apart from the feature not working.",
             "A recording whose length was never written - a session interrupted part way through saving - now opens in the trimmer instead of refusing with \"could not read how long that clip is\".",
             "Clips and sessions are assembled beside their destination and moved into place only when they are finished. A crash or a forced quit part way through used to leave the half-written file sitting in the library, looking like a recording that had gone wrong. Any left over from earlier runs are cleared at startup.",
+            "If ffmpeg cannot run, the app now says which ffmpeg.exe it picked and why it will not start, instead of passing on \"%1 is not a valid Win32 application\". It also writes the one it found, and its version, to the log on every start.",
         ],
     },
     Release {

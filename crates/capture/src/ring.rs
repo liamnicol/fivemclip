@@ -884,7 +884,7 @@ fn concat_segments(
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("could not run ffmpeg: {e}"))?;
+        .map_err(|e| ffmpeg::spawn_error(ffmpeg_path, &e))?;
 
     let _ = fs::remove_file(&list_path);
 

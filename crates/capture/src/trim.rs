@@ -243,7 +243,7 @@ fn run(
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("could not run ffmpeg: {e}"))?;
+        .map_err(|e| ffmpeg::spawn_error(ffmpeg_path, &e))?;
 
     if output.status.success() && out.is_file() {
         return Ok(());
