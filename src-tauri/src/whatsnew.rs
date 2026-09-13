@@ -20,10 +20,16 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
-        version: "0.2.13",
+        version: "0.2.14",
         lines: &[
             "Fixes region capture, which 0.2.12 broke: every capture sat for a second and a half before the overlay appeared. The overlay was being built hidden so it could be shown only once it had painted, and a hidden window does not run its page at all, so it never got the chance to say it had.",
             "The white flash is dealt with a different way now - the overlay window is given a dark background of its own, and the page keeps the previous capture hidden until the new one has decoded.",
+            "A version of its own rather than a second 0.2.13, since one of those was already built and installed without this fix in it.",
+        ],
+    },
+    Release {
+        version: "0.2.13",
+        lines: &[
             "Logs now survive restarts. The last five runs are kept as fivemclip.log.1 to .5, because only one was kept before - and installing an update restarts the app twice, which was enough to lose the log of the crash you were trying to diagnose.",
             "Every log now opens by saying whether the previous run shut down cleanly or died, so \"did it crash?\" is answered on the first line rather than worked out.",
             "It also records which encoder, monitor and bitrate were in use. A crash that leaves no error behind is usually a driver or a GPU encoder, and that line is the first clue. No webhooks or keys are ever written to it.",
