@@ -81,7 +81,6 @@ fn main() {
             commands::take_screenshot,
             commands::start_region_capture,
             commands::region_frame,
-            commands::region_ready,
             commands::finish_region_capture,
             commands::cancel_region_capture,
             commands::start_chat_region_pick,

@@ -336,16 +336,14 @@ pub fn begin_region_capture(app: AppHandle) {
         // always-on-top webview on every capture raced with itself: the close
         // is asynchronous, so the next capture could find no window through the
         // manager while the label was still taken.
-        //
-        // Neither path shows the window here. It is shown by `region_ready`,
-        // once the page has the frozen frame actually painted - see there.
         if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
             crate::diagnostics::log("reusing the region overlay");
             // It has to be told, or it shows the frame from last time: the
             // frozen screenshot is always written to the same path, and the
             // page only loads it once.
             let _ = existing.emit("region:open", ());
-            watch_for_a_stuck_overlay(&app);
+            let _ = existing.show();
+            let _ = existing.set_focus();
             return;
         }
 
@@ -365,53 +363,24 @@ pub fn begin_region_capture(app: AppHandle) {
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
-            // Hidden until it has something to show. A webview paints white
-            // before its first frame, and a fullscreen white flash over a dark
-            // game is the single most visible thing this app does.
-            .visible(false)
+            // The webview's own background, painted before the page has
+            // rendered anything. Left at its default it is white, and a
+            // fullscreen white flash over a dark game is the most visible thing
+            // this app does.
+            //
+            // This is the whole of the fix now. Building the window hidden and
+            // showing it once the page said it had painted was the obvious
+            // approach and it does not work: a hidden WebView2 window does not
+            // run its page at all, so the message never came, and every capture
+            // waited on the 1.5s fallback before appearing.
+            .background_color(tauri::window::Color(12, 14, 18, 255))
             .build()
         });
 
-        match built {
-            Ok(_) => watch_for_a_stuck_overlay(&app),
-            Err(e) => notify(&app, "Could not open the selection overlay", &e.to_string()),
+        if let Err(e) = built {
+            notify(&app, "Could not open the selection overlay", &e.to_string());
         }
     });
-}
-
-/// Show the overlay anyway if the page never says it is ready.
-///
-/// Without this, a page that fails to load leaves a hidden window and a hotkey
-/// that looks dead. The frozen frame still being on disk is what says the
-/// capture is outstanding: finishing it and cancelling both delete the file, so
-/// a still-present frame and a still-hidden window means nothing happened.
-fn watch_for_a_stuck_overlay(app: &AppHandle) {
-    let app = app.clone();
-    crate::diagnostics::thread("region-watchdog", move || {
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        let Some(window) = app.get_webview_window(REGION_WINDOW) else {
-            return;
-        };
-        if window.is_visible().unwrap_or(false) || !shot::region_frame_path().exists() {
-            return;
-        }
-        crate::diagnostics::log("the region overlay never reported ready; showing it anyway");
-        let _ = window.show();
-        let _ = window.set_focus();
-    });
-}
-
-/// The page has the frozen frame painted; put the window on screen.
-///
-/// Showing it any earlier is what the white flash was: the window appeared, and
-/// only then did the webview paint - white first, because that is a webview's
-/// background until a page gives it another one.
-#[tauri::command]
-pub fn region_ready(app: AppHandle) {
-    if let Some(window) = app.get_webview_window(REGION_WINDOW) {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
 }
 
 #[derive(Serialize)]

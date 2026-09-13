@@ -27,6 +27,11 @@ async function load() {
   submitted = false;
   origin = null;
   current = null;
+  // The window is on screen before this runs, so the previous capture's frame
+  // is still what is being displayed until the new one decodes. Hidden here and
+  // revealed below, or reopening the overlay shows you the last screen you
+  // grabbed - briefly, and convincingly enough to act on.
+  document.body.classList.add("is-loading");
   selection.hidden = true;
   sizeLabel.hidden = true;
   document.getElementById("error").hidden = true;
@@ -39,13 +44,8 @@ async function load() {
     // Cache-busted: every capture overwrites the same file, so without this the
     // overlay shows the screen as it was the last time it opened.
     frame.src = `${convertFileSrc(path)}?v=${Date.now()}`;
-    // Waited for, not assumed. The window is hidden until this resolves, so
-    // that the overlay appears with the frozen screen already painted instead
-    // of appearing white and filling in afterwards. decode() is the part that
-    // actually finishes the work; onload alone can still leave a frame to
-    // paint. On reuse it also matters for a second reason: until the new image
-    // is decoded the old one is still on screen, so showing early would flash
-    // the previous capture.
+    // Waited for rather than assumed: decode() is what actually finishes the
+    // work, where onload can still leave a frame to paint.
     await frame.decode().catch(() => {});
   } catch (error) {
     const box = document.getElementById("error");
@@ -53,9 +53,10 @@ async function load() {
     box.hidden = false;
     setTimeout(cancel, 2500);
   }
-  // Shown either way: an overlay that stays hidden when something went wrong is
-  // a hotkey that does nothing, with the reason invisible behind it.
-  invoke("region_ready");
+  // Revealed either way. If the frame could not be loaded the error box is
+  // what needs to be readable, and leaving the page hidden would make a failure
+  // look like a hotkey that does nothing.
+  document.body.classList.remove("is-loading");
 }
 
 /// Where the image actually sits inside the window, and how its displayed

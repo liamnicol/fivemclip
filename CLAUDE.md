@@ -105,15 +105,19 @@ missing" - the one before it deleted the frame on its way out. The tell in the
 log is "reusing the region overlay" with no "freezing the screen" span in front
 of it.
 
-**The region overlay is built hidden and shown by `region_ready`.** A webview
-paints white before its first frame, and a fullscreen white flash over a dark
-game is the most visible thing this app does. The page calls `region_ready`
-only after `img.decode()` resolves, so the window appears with the frozen screen
-already on it - on reuse that also stops the *previous* capture flashing up,
-since the old image stays on screen until the new one decodes. `region_ready` is
-called on the error path too, or a failure is an invisible window and a hotkey
-that looks dead, and `watch_for_a_stuck_overlay` shows it anyway after 1.5s if
-the page never reports at all.
+**A hidden WebView2 window does not run its page.** Building the region overlay
+with `.visible(false)` and showing it once the page reported having painted
+looked like the clean way to kill the white flash. It cannot work: the page
+never runs, so the message never comes, and every capture waited on the fallback
+timer instead. Nothing in the browser harness can catch this - there is no
+hidden-window state there and the page always runs - so any design that depends
+on a Windows window state has to be tried on Windows before it is believed.
+
+**The white flash is the webview's own background.** The overlay window is built
+with `.background_color()` set dark, which is what is painted before the page
+renders. The page separately keeps `#frame` hidden (`body.is-loading`) until
+`img.decode()` resolves, because on reuse the *previous* capture is still on
+screen until the new image decodes, and the window is already visible by then.
 
 **Spawn threads through `diagnostics::thread`, not `std::thread::spawn`.** Every
 log line carries its thread name, and a log full of "unnamed" says nothing about

@@ -100,3 +100,9 @@ kbd {
   box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
 }
 body.is-selecting #hint { opacity: 0; }
+
+/* Between opening and the frozen frame being decoded. The window is already on
+   screen by then - it has to be, because a hidden WebView2 window does not run
+   its page - so this is what stands in for it: the window's own dark background
+   rather than a white flash or the previous capture. */
+body.is-loading #frame { visibility: hidden; }
