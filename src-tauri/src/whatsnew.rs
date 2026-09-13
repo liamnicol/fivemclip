@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.12",
+        lines: &[
+            "This panel now fits the window. Catching up on three releases at once made it taller than the app, and the top of it could not be scrolled to at all - so it began above the top edge and the button was below the bottom one.",
+            "The heading and the button stay put now while the notes scroll between them, at every window size down to the smallest the app allows.",
+            "The first-run screen had the same fault, where it would have meant not being able to reach Get started.",
+        ],
+    },
+    Release {
         version: "0.2.11",
         lines: &[
             "Upload clips to your own cloud storage, with no Discord size limit in the way. Settings \u{2192} Your own cloud storage.",

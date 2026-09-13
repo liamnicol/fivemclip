@@ -289,15 +289,39 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 
 .sheet {
   position: fixed; inset: 0; z-index: 20;
-  display: flex; align-items: center; justify-content: center;
-  padding: 32px 20px; overflow-y: auto;
+  display: flex; justify-content: center;
+  padding: 24px 20px;
   background: rgba(6, 8, 12, 0.7);
 }
 
+/* Centred with `margin: auto` rather than `align-items: center`. A flex item
+   centred the other way and taller than its container overflows in *both*
+   directions, and the top of it cannot be scrolled to at all - which is how
+   three releases of notes came to start above the top of the window. */
 .sheet-card {
+  margin: auto;
   width: 100%; max-width: 460px;
+  /* The default window is 1080x720 and the minimum is 860x580; the app is
+     meant to live in a small window, so a card that only fits maximised is a
+     card that does not fit. */
+  /* Capped absolutely as well, or a long catch-up fills a big window edge to
+     edge and stops reading as a dialog. */
+  max-height: min(calc(100vh - 48px), 620px);
+  display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 16px; padding: 28px;
+}
+.sheet-card > h2, .sheet-card > .btn { flex: none; }
+
+/* Only the notes scroll, so the heading and the button that dismisses this stay
+   on screen however many releases are being caught up on. The negative margin
+   puts the scrollbar against the card edge rather than inside the padding. */
+.sheet-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  margin: 0 -28px 18px; padding: 0 28px 18px;
+  /* A rule under the notes, so text cut off by the scroll reads as a panel
+     edge rather than as something rendered wrong. */
+  border-bottom: 1px solid var(--line);
 }
 .sheet-card h2 { margin: 0 0 20px; font-size: 19px; letter-spacing: -0.2px; }
 .sheet-card h3 {
@@ -382,12 +406,16 @@ body.is-setup main { display: none; }
   overflow-y: auto;
   background: var(--bg);
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 32px 20px;
 }
 
 .setup-card {
+  /* Same reason as `.sheet-card`: centred by margin so a tall first-run card
+     scrolls from its top instead of hiding it. Getting this wrong means "Get
+     started" is off the bottom of a small window and the app cannot be set up
+     at all. */
+  margin: auto;
   width: 100%;
   max-width: 460px;
   background: var(--panel);

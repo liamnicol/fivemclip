@@ -129,6 +129,18 @@ nothing and "the check does not work" was indistinguishable from "there is
 nothing to report". The banner still only appears for `Available`; the Settings
 button reports all of them.
 
+**Centre overlay cards with `margin: auto`, never `align-items: center`.** A
+flex item centred that way and taller than its container overflows in *both*
+directions, and the top cannot be scrolled to however far you try - measured at
+-118px on the default window. The what's-new panel shipped like that and began
+above the top edge of the app with its button below the bottom one. `.sheet-card`
+and `.setup-card` both use `margin: auto`, and the card is capped at
+`min(100vh - 48px, 620px)` with only its body scrolling.
+
+**The window is 1080x720 by default and 860x580 at minimum, and it is never
+maximised.** Anything that only fits a large window does not fit. Check new
+overlays at 860x580 before believing them.
+
 **The update banner is a sibling of `<main>`, not part of a view.** It lived
 inside `#view-record`, so it was `display: none` from Library and Settings -
 where people spend most of their time. It supplies its own gutter and centring
