@@ -89,6 +89,17 @@ body { display: flex; flex-direction: column; }
 .dot.idle { background: var(--muted); }
 .dot.warn { background: var(--warn); }
 
+/* Beside a hotkey box that has taken a key FiveM needs. Not an error - the
+   binding is allowed and will work everywhere except inside the game's own
+   console - so it is coloured as a warning and says what to do about it. */
+small.warn {
+  display: block;
+  margin-top: 5px;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
 @media (prefers-reduced-motion: reduce) {

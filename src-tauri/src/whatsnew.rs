@@ -20,6 +20,17 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.16",
+        lines: &[
+            "The trimmer's buttons work. The video was overflowing the area it sat in and painting over the row beneath it, so \"Play selection\", \"Start here\" and \"End here\" could be seen, could be hovered, and did nothing at all - at every window size.",
+            "Hotkeys have moved off the keys FiveM needs. F8 is the console: a Windows hotkey is not shared with the game, so F8 opened the console and then would not close it. Your bindings are moved to the same key with Ctrl added - F8 becomes Ctrl+F8 - and the app tells you when it does. Settings warns if you pick one of them back.",
+            "The trimmer now shows the chat blackout over the video, so you can see what it will cover before you trim rather than after.",
+            "If no chat region has been set, the trimmer says so instead of hiding the option. It used to disappear entirely, which was impossible to tell apart from the feature not working.",
+            "A recording whose length was never written - a session interrupted part way through saving - now opens in the trimmer instead of refusing with \"could not read how long that clip is\".",
+            "Clips and sessions are assembled beside their destination and moved into place only when they are finished. A crash or a forced quit part way through used to leave the half-written file sitting in the library, looking like a recording that had gone wrong. Any left over from earlier runs are cleared at startup.",
+        ],
+    },
+    Release {
         version: "0.2.15",
         lines: &[
             "Changing a setting while a session is recording no longer restarts the encoder. It used to, and a session is stitched together from its segments without re-encoding - so changing the encoder, resolution, frame rate or bitrate part way through produced a recording that plays up to that moment and is broken after it. The new settings are kept and take effect when the session ends.",

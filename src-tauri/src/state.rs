@@ -38,6 +38,9 @@ pub struct AppState {
     /// take a screenshot. The overlay itself is the same window doing the same
     /// drag, so what happens on release is the only difference between them.
     pub picking_chat_region: AtomicBool,
+    /// Hotkeys this run moved off keys FiveM needs, as (was, now). Reported to
+    /// the user once: silently rebinding somebody's keyboard is its own bug.
+    pub hotkeys_moved: Vec<(String, String)>,
 }
 
 impl AppState {
@@ -48,6 +51,18 @@ impl AppState {
             .unwrap_or_default();
         settings.clamp();
 
+        // Once, on the way in, not in `clamp` - which runs on every save and
+        // would overrule anyone who picks a bare F-key on purpose afterwards.
+        // The defaults shipped as bare F-keys including F8, the FiveM console,
+        // and those are sitting in everyone's settings file: changing the
+        // defaults alone fixes nothing for anybody already running it.
+        let moved = settings.migrate_hotkeys();
+        for (was, now) in &moved {
+            crate::diagnostics::log(format!(
+                "moved the {was} hotkey to {now} - FiveM needs {was} and a bare hotkey does not share"
+            ));
+        }
+
         // Both indexes live beside the settings file, wherever that turned out
         // to be - which for a portable copy is the program's own folder.
         let beside = settings_path
@@ -56,6 +71,7 @@ impl AppState {
             .to_path_buf();
 
         AppState {
+            hotkeys_moved: moved,
             settings: Mutex::new(settings),
             recorder: Mutex::new(None),
             ffmpeg: ffmpeg::find_ffmpeg(),

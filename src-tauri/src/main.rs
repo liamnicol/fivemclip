@@ -160,6 +160,29 @@ fn main() {
                 }
             }
 
+            // Same reasoning, for what the previous run left on disk rather
+            // than in the process table: a stitch or a trim that was killed
+            // half way through leaves a scratch file behind, and a session's
+            // worth of them is real space in the folder this app prunes.
+            fivemclip_capture::ring::sweep_scratch(&library::managed_dirs(&settings));
+
+            // Said out loud, and written back, so the new binding is what the
+            // settings page shows and what the next run starts from.
+            let moved = handle.state::<AppState>().hotkeys_moved.clone();
+            if !moved.is_empty() {
+                let _ = handle.state::<AppState>().persist();
+                let list = moved
+                    .iter()
+                    .map(|(was, now)| format!("{was} is now {now}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                commands::notify(
+                    &handle,
+                    "Hotkeys moved off FiveM's keys",
+                    &format!("{list}. A bare F-key is not shared with the game."),
+                );
+            }
+
             hotkeys::register(&handle, &settings);
             autostart::apply(&handle, settings.autostart);
             build_tray(app)?;

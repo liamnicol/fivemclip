@@ -557,6 +557,18 @@ pub struct ChatHiding {
     pub available: bool,
     /// The setting is on, so the toggle starts ticked.
     pub on: bool,
+    /// The rectangle itself, so the trimmer can draw it over the video. Sent
+    /// even when the feature is unavailable for this file, because "a region
+    /// exists, just not for this one" is a different thing to show than "you
+    /// have never set one".
+    pub region: Option<fivemclip_capture::config::ChatRegion>,
+    /// Why it cannot be used here, ready to show. Empty when it can be.
+    ///
+    /// The trimmer used to hide the whole control whenever this was false, so
+    /// someone who had ticked "black out the chat box" in Settings and never
+    /// set a region opened the trimmer, saw no chat option at all, and had
+    /// nothing to conclude except that the feature did not work.
+    pub reason: String,
 }
 
 #[tauri::command]
@@ -566,11 +578,20 @@ pub fn chat_hiding(state: State<AppState>, path: String) -> ChatHiding {
     // where FiveM draws its chat on this machine's screen; painting that
     // rectangle onto some unrelated video would cover whatever happened to be
     // there, which is worse than doing nothing.
-    let available = settings.chat_region.is_some()
-        && library::is_managed(&settings, std::path::Path::new(&path));
+    let managed = library::is_managed(&settings, std::path::Path::new(&path));
+    let available = settings.chat_region.is_some() && managed;
+    let reason = if settings.chat_region.is_none() {
+        "No chat region set yet. Settings > Hiding the chat > Set the chat region."
+    } else if !managed {
+        "Only recordings made by FiveMClip can have their chat hidden."
+    } else {
+        ""
+    };
     ChatHiding {
         available,
         on: available && settings.hide_chat,
+        region: settings.chat_region,
+        reason: reason.to_string(),
     }
 }
 

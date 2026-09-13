@@ -1,0 +1,7 @@
+{
+  "name": "fivemclip-harness",
+  "private": true,
+  "description": "Drives ui/ in a real browser with a stubbed Tauri backend.",
+  "scripts": { "check": "node check.js" },
+  "devDependencies": { "playwright": "^1.49.0" }
+}

@@ -7,10 +7,16 @@
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
+use std::sync::mpsc::Receiver;
+// WASAPI capture is the only thing that sends, so on anything else these are
+// unused and a review run of clippy on Linux fails on them.
+#[cfg(windows)]
+use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(windows)]
+use std::time::Instant;
 
 pub const SAMPLE_RATE: usize = 48_000;
 pub const CHANNELS: usize = 2;

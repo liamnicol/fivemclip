@@ -58,6 +58,19 @@ fn collect(dir: &Path, kind: &'static str, exts: &[&str], out: &mut Vec<MediaIte
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        // The app's own half-written files. A stitch and a trim both assemble
+        // into `.something.writing.mp4` / `.something.trimming.mp4` beside the
+        // destination, and an interrupted one stays there - listed, playable
+        // for a few seconds, and indistinguishable from a recording that had
+        // simply gone wrong.
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with('.'))
+            .unwrap_or(false)
+        {
+            continue;
+        }
         let matches_ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -159,6 +172,33 @@ mod tests {
 
         assert!(names.contains(&"Session_old.mkv".to_string()), "{names:?}");
         assert!(names.contains(&"Session_new.mp4".to_string()), "{names:?}");
+    }
+
+    /// Half-written files are the app's own scratch, and a crash leaves them
+    /// behind. Listed, they read as a recording that went wrong: they play for
+    /// a few seconds and stop, which is exactly what a corrupt session looks
+    /// like, so they were being reported as one.
+    #[test]
+    fn half_written_scratch_files_are_not_recordings() {
+        let dir = scratch("scratch");
+        let settings = Settings {
+            output_dir: dir.clone(),
+            ..Default::default()
+        };
+        std::fs::create_dir_all(settings.clips_dir()).unwrap();
+        std::fs::create_dir_all(settings.sessions_dir()).unwrap();
+        std::fs::write(settings.clips_dir().join("Clip_good.mp4"), b"x").unwrap();
+        std::fs::write(settings.clips_dir().join(".Clip_good.trimming.mp4"), b"x").unwrap();
+        std::fs::write(settings.sessions_dir().join(".Session_a.writing.mp4"), b"x").unwrap();
+
+        let links = Links::load(dir.join("links.json"));
+        let markers = Markers::load(dir.join("markers.json"));
+        let names: Vec<String> = list(&settings, &links, &markers)
+            .into_iter()
+            .map(|i| i.name)
+            .collect();
+
+        assert_eq!(names, vec!["Clip_good.mp4".to_string()], "{names:?}");
     }
 
     /// A clip and a session both being MP4 must not make one show up as the

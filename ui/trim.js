@@ -295,6 +295,9 @@ window.addEventListener("keydown", (event) => {
 
 /* ---------------- hiding the chat ---------------- */
 
+/** The saved rectangle, as fractions of the frame, or null if none is set. */
+let chatRegion = null;
+
 function hidingChat() {
   const box = $("hide-chat");
   return !box.disabled && box.checked;
@@ -314,18 +317,90 @@ function paintFastAvailability() {
   }
 }
 
-$("hide-chat").addEventListener("change", paintFastAvailability);
+$("hide-chat").addEventListener("change", () => {
+  paintFastAvailability();
+  paintChatPreview();
+});
+
+/** Where the video's picture actually is inside the element.
+ *
+ *  `object-fit: contain` letterboxes whenever the clip and the box it is drawn
+ *  in have different shapes, so a fraction of the frame is not a fraction of
+ *  the element until it is put through this. Same problem the region overlay
+ *  solves for the frozen screenshot, same shape of answer. */
+function pictureBox() {
+  const box = video.getBoundingClientRect();
+  const natural = video.videoWidth / video.videoHeight;
+  if (!Number.isFinite(natural) || natural <= 0) return null;
+  const shown = box.width / box.height;
+  const width = shown > natural ? box.height * natural : box.width;
+  const height = shown > natural ? box.height : box.width / natural;
+  return {
+    left: box.left + (box.width - width) / 2,
+    top: box.top + (box.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+/** Show the rectangle that will be painted out, over the video, while the
+ *  toggle is on.
+ *
+ *  There was nothing at all before this: the only way to find out where the
+ *  black box would land was to trim the clip and watch the result. A region is
+ *  dragged over a frozen desktop in another window, minutes earlier, and
+ *  "covering 18% x 22% of the frame" in Settings is not something anyone can
+ *  picture. */
+function paintChatPreview() {
+  const preview = $("chat-preview");
+  if (!chatRegion || !hidingChat() || $("timeline").hidden) {
+    preview.hidden = true;
+    return;
+  }
+  const picture = pictureBox();
+  if (!picture) {
+    preview.hidden = true;
+    return;
+  }
+  const stage = $("stage").getBoundingClientRect();
+  Object.assign(preview.style, {
+    left: `${picture.left - stage.left + chatRegion.x * picture.width}px`,
+    top: `${picture.top - stage.top + chatRegion.y * picture.height}px`,
+    width: `${chatRegion.w * picture.width}px`,
+    height: `${chatRegion.h * picture.height}px`,
+  });
+  preview.hidden = false;
+}
+
+// The picture moves whenever the window does, and a preview that stays where
+// the video used to be is worse than none.
+window.addEventListener("resize", paintChatPreview);
 
 /** Asked per clip, once it is known: whether it can have its chat hidden
  *  depends on the file, not only on the setting. */
 function askAboutChat(path) {
   invoke("chat_hiding", { path })
-    .then(({ available, on }) => {
-      $("hide-chat-wrap").hidden = !available;
+    .then(({ available, on, region, reason }) => {
+      chatRegion = region ?? null;
+      // Always shown, never hidden. Hiding it when a region had not been set
+      // meant the trimmer offered no chat control and no explanation, which is
+      // indistinguishable from the feature being broken.
+      $("hide-chat-wrap").hidden = false;
+      $("hide-chat-wrap").title = reason ?? "";
+      $("hide-chat").disabled = !available;
       $("hide-chat").checked = on;
+      $("hide-chat-why").textContent = available ? "" : reason ?? "";
+      $("hide-chat-why").hidden = available;
       paintFastAvailability();
+      paintChatPreview();
     })
-    .catch(() => {});
+    .catch((error) => {
+      // Swallowed before, which left the control hidden and silent.
+      $("hide-chat-wrap").hidden = false;
+      $("hide-chat").disabled = true;
+      $("hide-chat-why").textContent = String(error);
+      $("hide-chat-why").hidden = false;
+    });
 }
 
 /* ---------------- saving ---------------- */
@@ -336,7 +411,14 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
   const label = pressed.textContent;
   buttons.forEach((b) => (b.disabled = true));
   pressed.textContent = "Trimming…";
+  // Let go of the file, do not merely stop playing it. Saving writes the result
+  // beside the source and renames it into place, and Windows refuses to rename
+  // over a file something still has open - which the webview does for as long
+  // as the element has a src, paused or not. Pausing was all this did before.
+  const at = video.currentTime;
   video.pause();
+  video.removeAttribute("src");
+  video.load();
   try {
     const channel = chosenChannel();
     const saved = await invoke("trim_clip", {
@@ -361,6 +443,19 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
     alert(String(error));
     buttons.forEach((b) => (b.disabled = false));
     pressed.textContent = label;
+    // Put the clip back. The window stays open after a failure, and without
+    // this it stays open showing nothing.
+    //
+    // With its own metadata handler, not the one `load()` installs: that one
+    // sizes a fresh timeline and selects the whole clip, so restoring through
+    // it would throw away the selection the user just failed to save.
+    video.onloadedmetadata = () => {
+      video.currentTime = at;
+      paint();
+      paintChatPreview();
+    };
+    video.src = `${convertFileSrc(sourcePath)}?v=${Date.now()}`;
+    paintFastAvailability();
     paint();
   }
 }
@@ -375,6 +470,48 @@ $("fast").addEventListener("click", () => save(true, true));
 $("discord").addEventListener("click", () => save(false, false, true, true));
 
 /* ---------------- boot ---------------- */
+
+/** How long the clip is, going and finding out if the header does not say.
+ *
+ *  A recording whose duration was never written - a session the app was killed
+ *  part way through stitching, or one still being flushed - comes back as
+ *  `Infinity`. Seeking past the end makes the browser scan for the real one.
+ *  This used to give up on the spot and say "could not read how long that clip
+ *  is", which turned the trimmer into a dead end for exactly the long sessions
+ *  people most want to cut down, with nothing to do about it.
+ *
+ *  Resolves to null if the seek does not produce an answer, so a file that
+ *  genuinely has no end still says so instead of spinning. */
+function resolveDuration() {
+  const known = () => Number.isFinite(video.duration) && video.duration > 0;
+  if (known()) return Promise.resolve(video.duration);
+
+  return new Promise((resolve) => {
+    const finish = (value) => {
+      clearTimeout(timer);
+      video.removeEventListener("durationchange", onChange);
+      // Back to the start: the seek that found the duration left the playhead
+      // at the end of the clip, which is not where anyone opens a trimmer.
+      if (value !== null) {
+        try {
+          video.currentTime = 0;
+        } catch {
+          /* a stream that will not seek back is still trimmable */
+        }
+      }
+      resolve(value);
+    };
+    const onChange = () => known() && finish(video.duration);
+    const timer = setTimeout(() => finish(null), 5000);
+    video.addEventListener("durationchange", onChange);
+    try {
+      // Clamped to the end of the media, which is what forces the scan.
+      video.currentTime = 1e101;
+    } catch {
+      finish(null);
+    }
+  });
+}
 
 function load(path) {
   sourcePath = path;
@@ -395,18 +532,18 @@ function load(path) {
   $("loading").hidden = false;
   $("loading").textContent = "Loading…";
 
-  video.onloadedmetadata = () => {
-    // A clip stitched from segments can report Infinity until it is seeked;
-    // without a real duration there is no timeline to draw.
-    if (!Number.isFinite(video.duration) || video.duration <= 0) {
+  video.onloadedmetadata = async () => {
+    const found = await resolveDuration();
+    if (found === null) {
       $("loading").textContent = "Could not read how long that clip is.";
       return;
     }
-    duration = video.duration;
+    duration = found;
     end = duration;
     $("loading").hidden = true;
     $("timeline").hidden = false;
     paint();
+    paintChatPreview();
   };
   video.onerror = () => {
     $("loading").textContent = "Could not open that clip.";

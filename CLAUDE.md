@@ -35,7 +35,9 @@ crates/capture/     Screen capture, replay buffer, audio, screenshots
   reaper.rs         Job object so ffmpeg dies with the app
   sysprobe.rs       Monitor enumeration, trigger-process matching
 src-tauri/src/      Commands, hotkeys, tray, uploads, diagnostics
-ui/                 index.html + region.html + editor.html, one JS file each
+ui/                 index.html + region.html + editor.html + trim.html,
+                    one JS file each
+tools/harness/      Drives ui/ in Chromium with a stubbed Tauri backend
 ```
 
 ## Conventions that are load-bearing
@@ -74,6 +76,42 @@ legible edge back out of a blur. `trim::chat_box_filter` draws a filled
 `drawbox`, and `trim::ffmpeg_tests::hiding_the_chat_really_removes_it` measures
 the result - with a control on the source, so it cannot pass by the region being
 dark to begin with.
+
+**A percentage height only resolves against a definite one.** `#stage` was a
+grid with `place-items: center` and the video capped at `max-height: 100%`. A
+grid row is auto-sized, so that 100% resolved against a track whose height
+depended on the video - circular, which CSS resolves as no maximum at all. The
+video took its intrinsic height, overflowed a stage 150px shorter than it, and
+painted over the transport row: Play, Start here and End here were unclickable
+at every window size. It is flex with `min-height: 0` now, plus
+`overflow: hidden` so nothing in the stage can ever cover the controls again.
+The same family as the `align-items: center` note further down. Checked by
+hit-testing in `tools/harness/check.js`, which is the only thing that would have
+caught it.
+
+**A hotkey on a bare key is not shared with the game.** `RegisterHotKey` does
+not suppress raw input, which is how a game reads the keyboard, so FiveM still
+sees the key and it looks like both work. The moment something in the game reads
+the keyboard the ordinary way - the F8 console, once it is open and taking typed
+input - the hotkey wins and the key stops arriving. F8 opened the console and
+would not close it. `config::FIVEM_KEYS` lists the keys this applies to,
+`clashes_with_fivem` tests a combo, and `migrate_hotkeys` moves a bare one onto
+`Ctrl+` the same key, because changing the defaults alone fixes nothing for
+anyone who has already run the app. The front end warns rather than refuses: it
+is the user's keyboard.
+
+**A recording is assembled beside its destination and renamed into place.**
+`concat_segments` wrote straight to the final path, so a crash, a forced quit or
+the updater part way through left a truncated file in the library - listed,
+thumbnailed, playing up to the moment of death. `trim()` had always used a
+scratch file; this did not. Scratch names are dotted, the library skips dotted
+names, and `sweep_scratch` clears leftovers at startup.
+
+**A durationless recording is not an unreadable one.** `video.duration` comes
+back `Infinity` for a file whose header never got a duration written. Seeking
+past the end makes the browser go and find it. The trimmer used to give up on
+the spot, which made it a dead end for exactly the interrupted sessions people
+most want to salvage.
 
 **Hiding the chat and a fast trim are mutually exclusive.** A stream copy cannot
 paint over anything. `trim()` refuses the combination with the other argument
@@ -235,13 +273,36 @@ image coordinates; the crop is just another undoable mark.
 
 ## Testing the front end without Windows
 
-`ui/` is plain HTML, so it renders in any browser with `window.__TAURI__`
-stubbed. This caught the blur bug above. Serve `ui/` over HTTP - `file://`
-blocks image loads - and drive it with Playwright.
+`tools/harness/` does this, and `node check.js` in it is the suite. It serves
+`ui/` over HTTP, installs a `window.__TAURI__` whose commands each scenario
+supplies, and drives the pages with Playwright.
 
-The server must honour Range requests. `python -m http.server` does not, so a
-`<video>` reports `seekable=[0,0]`, every seek silently does nothing, and the
-trim window looks broken when it is not.
+```
+cd tools/harness && npm install && node check.js
+```
+
+Every case in `check.js` is a bug that shipped. Add to it rather than probing by
+hand; the trimmer's controls were unclickable at every window size for as long
+as this did not exist, and nothing in the code reads as wrong.
+
+**Clicking is the check, not visibility.** `hits()` asks `elementFromPoint` what
+a click would actually land on. The buttons that did nothing were visible,
+enabled and stable the whole time - a `<video>` was painted over them.
+
+**Fixtures are VP9/Opus WebM, and that is not a preference.** Playwright's
+Chromium is built without the proprietary codecs, so an `.mp4` fixture loads as
+"Could not open that clip" and every timeline test fails for a reason unrelated
+to the code. WebView2 plays H.264 perfectly well. `media.js` generates them with
+ffmpeg; they are gitignored.
+
+**The server must honour Range requests.** `python -m http.server` does not, so
+a `<video>` reports `seekable=[0,0]`, every seek silently does nothing, and the
+trim window looks broken when it is not. `serve.js` handles them, suffix ranges
+included.
+
+**A stubbed command that is not listed rejects.** Resolving to `undefined`
+instead lets a page carry on into a state the real app would never reach, which
+is how a harness starts certifying the wrong behaviour.
 
 `crates/capture/src/trim.rs` has tests that run a real ffmpeg. They skip unless
 `FIVEMCLIP_TEST_FFMPEG` and `FIVEMCLIP_TEST_CLIP` are set, so CI stays green

@@ -768,6 +768,52 @@ fn segments_since(
 /// The output container is chosen by extension: MP4 for clips, which people
 /// upload and scrub, and Matroska for sessions, which need to survive being
 /// interrupted.
+/// Where a stitch is assembled before it is allowed to be a recording.
+///
+/// Beside the destination, so the rename that follows is a move within one
+/// directory and cannot fail for crossing a volume. Dotted, so a leftover is
+/// recognisable as ours and is skipped by the library scan.
+fn scratch_for(out: &Path) -> PathBuf {
+    out.with_file_name(format!(
+        ".{}.writing.{}",
+        out.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "recording".into()),
+        out.extension()
+            .map(|e| e.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "mp4".into()),
+    ))
+}
+
+/// Delete half-written stitches and trims left by a run that did not finish.
+///
+/// They are hidden from the library, so the only thing they cost after a crash
+/// is disk - but a session that was three hours long when the app died is three
+/// hours of disk, in the folder whose free space this app polices.
+///
+/// Returns how many were removed, so a run that keeps finding them says so.
+pub fn sweep_scratch(dirs: &[PathBuf]) -> usize {
+    let mut removed = 0;
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let ours = name.starts_with('.')
+                && (name.contains(".writing.") || name.contains(".trimming."));
+            if ours && fs::remove_file(entry.path()).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    if removed > 0 {
+        log::info!("cleared {removed} half-written recording(s) from a previous run");
+    }
+    removed
+}
+
 fn concat_segments(
     ffmpeg_path: &Path,
     ring: &Path,
@@ -824,8 +870,17 @@ fn concat_segments(
         }
     }
 
+    // Written beside the destination and moved into place only once ffmpeg has
+    // said it finished. Straight to the destination was how a killed app - a
+    // crash, the updater, Task Manager, or the job object taking ffmpeg down
+    // with us - left a half-written recording sitting in the library, listed
+    // and thumbnailed like any other, playing up to the moment of death and
+    // then stopping. `trim()` has always done it this way; this did not.
+    let scratch = scratch_for(out);
+    let _ = fs::remove_file(&scratch);
+
     let status = command
-        .arg(out)
+        .arg(&scratch)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -833,15 +888,58 @@ fn concat_segments(
 
     let _ = fs::remove_file(&list_path);
 
-    if status.status.success() {
-        Ok(())
-    } else {
-        Err(ffmpeg::explain(&String::from_utf8_lossy(&status.stderr)))
+    if !status.status.success() {
+        let _ = fs::remove_file(&scratch);
+        return Err(ffmpeg::explain(&String::from_utf8_lossy(&status.stderr)));
     }
+    fs::rename(&scratch, out).map_err(|e| {
+        let _ = fs::remove_file(&scratch);
+        format!("could not put the finished recording in place: {e}")
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    /// Beside the destination, so the rename into place is a move within one
+    /// directory; hidden, so a leftover from a crash is skipped by the library
+    /// rather than listed as a recording that stops after ten seconds.
+    #[test]
+    fn the_scratch_sits_beside_its_destination_and_is_hidden() {
+        let out = std::env::temp_dir().join("Sessions").join("Session_a.mp4");
+        let out = out.as_path();
+        let scratch = super::scratch_for(out);
+        assert_eq!(scratch.parent(), out.parent());
+        assert_eq!(
+            scratch.file_name().unwrap().to_string_lossy(),
+            ".Session_a.writing.mp4"
+        );
+    }
+
+    #[test]
+    fn sweeping_takes_the_scratch_and_leaves_the_recordings() {
+        let dir = std::env::temp_dir().join(format!("fivemclip-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "Session_a.mp4",
+            ".Session_b.writing.mp4",
+            ".Clip_c.trimming.mp4",
+            ".hidden-but-not-ours.mp4",
+        ] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+
+        assert_eq!(super::sweep_scratch(std::slice::from_ref(&dir)), 2);
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, vec![".hidden-but-not-ours.mp4", "Session_a.mp4"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use std::time::Duration;
 

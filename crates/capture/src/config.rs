@@ -292,12 +292,12 @@ impl Default for Settings {
             start_minimized: false,
             autostart: true,
             setup_complete: false,
-            hotkey_save_clip: "F9".into(),
-            hotkey_screenshot: "F10".into(),
-            hotkey_region: "F11".into(),
-            hotkey_session: "F8".into(),
+            hotkey_save_clip: "Ctrl+F5".into(),
+            hotkey_screenshot: "Ctrl+F6".into(),
+            hotkey_region: "Ctrl+F7".into(),
+            hotkey_session: "Ctrl+F8".into(),
             hotkey_toggle_buffer: "Ctrl+F9".into(),
-            hotkey_marker: "F7".into(),
+            hotkey_marker: "Ctrl+F10".into(),
             imgbb_api_key: String::new(),
             imgbb_auto_upload: false,
             s3: S3Target::default(),
@@ -348,6 +348,64 @@ impl Settings {
         // Audio is a rounding error next to the video bitrate.
         let bits = self.bitrate_kbps as u64 * 1000 * self.buffer_seconds as u64;
         (bits / 8) + (bits / 8 / 10)
+    }
+}
+
+/// Keys FiveM and GTA V want for themselves, and that a global hotkey must not
+/// take on its own.
+///
+/// A Windows hotkey registered on a bare key is not shared. The game still sees
+/// it while it is reading the keyboard the way a game does - through raw input,
+/// which a registered hotkey does not suppress - so the key appears to work.
+/// The moment something in the game reads the keyboard the ordinary way, which
+/// is what the F8 console does while it is open and taking typed input, the
+/// hotkey wins and the key stops arriving. That is why F8 opened the console
+/// and then would not close it.
+///
+/// Listed as `event.code` names, which is what the accelerators are built from.
+pub const FIVEM_KEYS: &[&str] = &[
+    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
+];
+
+/// Whether `combo` takes one of those keys on its own.
+///
+/// A modifier makes it a different hotkey as far as Windows is concerned, so
+/// `Ctrl+F8` leaves plain F8 alone and the console keeps working.
+pub fn clashes_with_fivem(combo: &str) -> bool {
+    let combo = combo.trim();
+    !combo.contains('+') && FIVEM_KEYS.iter().any(|k| combo.eq_ignore_ascii_case(k))
+}
+
+impl Settings {
+    /// Move hotkeys off keys the game needs.
+    ///
+    /// The defaults used to be bare F-keys, F8 among them - the FiveM console.
+    /// Those are saved in everyone's settings file, so changing the defaults
+    /// alone would fix nothing for anybody already running it. Only bare keys
+    /// are moved, and only onto the modifier form of the same key, so the
+    /// muscle memory survives: F8 becomes Ctrl+F8.
+    ///
+    /// Returns what it moved, so the app can say so rather than silently
+    /// rebinding someone's keyboard.
+    pub fn migrate_hotkeys(&mut self) -> Vec<(String, String)> {
+        let mut moved = Vec::new();
+        for slot in [
+            &mut self.hotkey_save_clip,
+            &mut self.hotkey_screenshot,
+            &mut self.hotkey_region,
+            &mut self.hotkey_session,
+            &mut self.hotkey_toggle_buffer,
+            &mut self.hotkey_marker,
+        ] {
+            if !clashes_with_fivem(slot) {
+                continue;
+            }
+            let was = slot.clone();
+            let now = format!("Ctrl+{}", was.trim());
+            moved.push((was, now.clone()));
+            *slot = now;
+        }
+        moved
     }
 
     /// Fold the old single-webhook settings into the list.
@@ -497,6 +555,69 @@ fn dirs_home() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F8 is the FiveM console. It was the default for the session hotkey, so
+    /// it is sitting in the settings file of everyone who has ever run this.
+    #[test]
+    fn the_old_bare_f_key_defaults_are_moved_off_fivems_keys() {
+        let mut s = Settings {
+            hotkey_save_clip: "F9".into(),
+            hotkey_screenshot: "F10".into(),
+            hotkey_region: "F11".into(),
+            hotkey_session: "F8".into(),
+            hotkey_toggle_buffer: "Ctrl+F9".into(),
+            hotkey_marker: "F7".into(),
+            ..Settings::default()
+        };
+        let moved = s.migrate_hotkeys();
+
+        assert_eq!(s.hotkey_session, "Ctrl+F8");
+        assert_eq!(s.hotkey_save_clip, "Ctrl+F9");
+        assert_eq!(s.hotkey_marker, "Ctrl+F7");
+        // Already carried a modifier, so it was never in the game's way.
+        assert_eq!(s.hotkey_toggle_buffer, "Ctrl+F9");
+        assert_eq!(moved.len(), 5, "{moved:?}");
+        assert!(moved.contains(&("F8".to_string(), "Ctrl+F8".to_string())));
+    }
+
+    #[test]
+    fn migrating_hotkeys_twice_changes_nothing_the_second_time() {
+        let mut s = Settings {
+            hotkey_session: "F8".into(),
+            ..Settings::default()
+        };
+        s.migrate_hotkeys();
+        let again = s.migrate_hotkeys();
+        assert!(again.is_empty(), "{again:?}");
+        assert_eq!(s.hotkey_session, "Ctrl+F8");
+    }
+
+    #[test]
+    fn the_shipped_defaults_do_not_take_a_key_fivem_needs() {
+        let s = Settings::default();
+        for combo in [
+            &s.hotkey_save_clip,
+            &s.hotkey_screenshot,
+            &s.hotkey_region,
+            &s.hotkey_session,
+            &s.hotkey_toggle_buffer,
+            &s.hotkey_marker,
+        ] {
+            assert!(!clashes_with_fivem(combo), "{combo} is one of FiveM's");
+        }
+    }
+
+    /// A modifier makes it a different hotkey to Windows, so the bare key is
+    /// left for the game. That is the whole mechanism of the fix.
+    #[test]
+    fn a_modifier_is_what_makes_a_game_key_safe() {
+        assert!(clashes_with_fivem("F8"));
+        assert!(clashes_with_fivem(" f8 "));
+        assert!(!clashes_with_fivem("Ctrl+F8"));
+        assert!(!clashes_with_fivem("Alt+F8"));
+        assert!(!clashes_with_fivem("F12"));
+        assert!(!clashes_with_fivem(""));
+    }
 
     #[test]
     fn clamp_pulls_absurd_values_into_range() {

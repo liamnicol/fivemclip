@@ -789,6 +789,31 @@ function setCombo(input, combo) {
  *  was doing. */
 const KEYUP_ONLY = new Set(["PrintScreen"]);
 
+/** Keys FiveM wants for itself. Mirrors config::FIVEM_KEYS.
+ *
+ *  A hotkey registered on a bare key is not shared with the game. FiveM still
+ *  sees it through raw input, so it looks like it works - and then the F8
+ *  console opens and will not close, because a console taking typed input reads
+ *  the keyboard the ordinary way and the hotkey wins. Allowed rather than
+ *  refused: it is the user's keyboard, and someone who does not play with the
+ *  console open is entitled to bind F8. */
+const FIVEM_KEYS = new Set(["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11"]);
+
+const clashesWithFiveM = (combo) => FIVEM_KEYS.has(combo) && !combo.includes("+");
+
+/** Warn beside any hotkey box that has taken a key the game needs. */
+function paintHotkeyClashes() {
+  for (const input of document.querySelectorAll(".hotkey")) {
+    const warn = document.getElementById(`${input.id}-clash`);
+    if (!warn) continue;
+    const clash = clashesWithFiveM(input.dataset.combo ?? "");
+    warn.hidden = !clash;
+    if (clash) {
+      warn.textContent = `FiveM uses ${input.dataset.combo}. Add Ctrl or Alt, or the game will stop seeing it while the console is open.`;
+    }
+  }
+}
+
 function captureCombo(input, event) {
   event.preventDefault();
 
@@ -798,6 +823,7 @@ function captureCombo(input, event) {
   if (event.key === "Escape" && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     setCombo(input, "");
     input.blur();
+    paintHotkeyClashes();
     scheduleSave();
     return;
   }
@@ -816,6 +842,7 @@ function captureCombo(input, event) {
 
   setCombo(input, parts.join("+"));
   input.blur();
+  paintHotkeyClashes();
   // setCombo writes the value programmatically, which fires nothing.
   scheduleSave();
 }
@@ -873,6 +900,7 @@ function applySettings(next) {
   setCombo($("hotkey_session"), next.hotkey_session);
   setCombo($("hotkey_marker"), next.hotkey_marker);
   setCombo($("hotkey_toggle_buffer"), next.hotkey_toggle_buffer);
+  paintHotkeyClashes();
   $("imgbb_api_key").value = next.imgbb_api_key;
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
   renderDiscordChannels(next.discord_targets ?? []);

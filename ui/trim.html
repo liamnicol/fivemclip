@@ -19,6 +19,7 @@
         <input type="checkbox" id="hide-chat" />
         <span>Hide chat</span>
       </label>
+      <small class="muted" id="hide-chat-why" hidden></small>
       <select id="discord-target" hidden aria-label="Discord channel"></select>
       <button class="btn" id="discord" hidden>Fit &amp; send</button>
       <button class="btn" id="save-copy">Save a copy</button>
@@ -27,6 +28,10 @@
 
     <main id="stage">
       <video id="video" preload="metadata" playsinline></video>
+      <!-- What the blackout will cover, drawn over the picture while the
+           toggle is on. Positioned from script against the video's own
+           letterboxed content box. -->
+      <div id="chat-preview" hidden><span>Hidden in the trim</span></div>
       <p class="loading" id="loading">Loading…</p>
     </main>
 
