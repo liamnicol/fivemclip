@@ -64,6 +64,18 @@ struct Session {
     /// calls a second after a couple of hours - while holding the recorder lock.
     cached_bytes: u64,
     measured_at: Option<Instant>,
+    /// Whether the segments of this session carry an audio stream.
+    ///
+    /// `None` until the first encoder start inside the session. The session is
+    /// stitched with `-c copy`, which needs every segment to have the same
+    /// streams - so if a restart mid-session comes back without audio (the
+    /// device was lost, or another app grabbed it exclusively) the second half
+    /// cannot be concatenated onto the first. It produces a file that plays up
+    /// to the change and is broken after it, with nothing in the log to say so.
+    audio: Option<bool>,
+    /// Set when the above actually happened, so the save can say what is wrong
+    /// with the file rather than writing a silently corrupt one.
+    audio_changed: bool,
 }
 
 struct Running {
@@ -180,8 +192,25 @@ impl Recorder {
         session.cached_bytes
     }
 
+    /// Take new settings, restarting the encoder so they take effect.
+    ///
+    /// **Not during a session.** The restart was unconditional, and a session is
+    /// stitched from its segments with `-c copy` - so changing the encoder,
+    /// resolution, fps or bitrate part way through produced segments that do not
+    /// concatenate, which is to say a corrupt recording, silently. With
+    /// auto-session on, a session is running most of the time, so most settings
+    /// changes landed inside one.
+    ///
+    /// The settings are still stored; they take effect at the next restart,
+    /// which is the end of the session. Same reasoning as refusing to move the
+    /// output directory mid-session, and the same fix.
     pub fn apply_settings(&mut self, settings: Settings, pipeline: &'static Pipeline) {
-        let restart = self.is_running();
+        let restart = self.is_running() && self.session.is_none();
+        if self.session.is_some() {
+            log::info!(
+                "settings changed during a session - stored, and applied when the session ends"
+            );
+        }
         if restart {
             self.stop();
         }
@@ -229,6 +258,39 @@ impl Recorder {
         };
 
         let has_audio = system.is_some();
+        for w in &warnings {
+            log::warn!("{w}");
+        }
+
+        // A session stitches with -c copy, so every segment has to have the
+        // same streams. If this restart came back without the audio the earlier
+        // segments have (or the other way round), the stitch will be broken at
+        // the join - worth saying now, while the cause is still on screen.
+        if let Some(session) = self.session.as_mut() {
+            match session.audio {
+                None => session.audio = Some(has_audio),
+                Some(had) if had != has_audio => {
+                    session.audio_changed = true;
+                    log::warn!(
+                        "the audio layout changed mid-session (had audio: {had}, now: {has_audio}) \
+                         - this session cannot be stitched cleanly"
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+
+        let s = &self.settings;
+        log::info!(
+            "starting the encoder: {} · monitor {} · {} fps · {} kbps · audio {} · session {}",
+            self.pipeline.id,
+            s.monitor_index,
+            s.fps,
+            s.bitrate_kbps,
+            if has_audio { "yes" } else { "no" },
+            if self.session.is_some() { "yes" } else { "no" },
+        );
+
         let args = self.build_args(has_audio, &ring);
 
         let mut cmd = ffmpeg::command(&self.ffmpeg);
@@ -284,6 +346,7 @@ impl Recorder {
 
     pub fn stop(&mut self) {
         if let Some(mut r) = self.running.take() {
+            log::info!("stopping the encoder after {:?}", r.started.elapsed());
             r.stop.store(true, Ordering::Relaxed);
             // Killing ffmpeg leaves the current segment truncated, which TS
             // tolerates. There is nothing to finalise because we never opened an
@@ -399,10 +462,14 @@ impl Recorder {
             markers: Vec::new(),
             cached_bytes: 0,
             measured_at: None,
+            audio: None,
+            audio_changed: false,
         });
 
+        log::info!("starting a session recording");
         self.stop();
         if let Err(e) = self.start() {
+            log::warn!("the session could not start: {e}");
             self.session = None;
             return Err(e);
         }
@@ -458,11 +525,30 @@ impl Recorder {
 
         let ring = self.settings.ring_dir();
         let segments = segments_since(&ring, session.started_at);
+        log::info!(
+            "stopping the session: {} segments, {} bytes on disk, {} markers",
+            segments.len(),
+            segments
+                .iter()
+                .filter_map(|(p, _)| p.metadata().ok())
+                .map(|m| m.len())
+                .sum::<u64>(),
+            session.markers.len(),
+        );
         if segments.is_empty() {
+            log::warn!("no segments belong to this session - nothing to save");
             if was_running {
                 let _ = self.start();
             }
             return Err("That session was too short to save.".into());
+        }
+        if session.audio_changed {
+            // Already warned when it happened; said again here because this is
+            // the message that comes with a file someone is about to watch.
+            log::warn!(
+                "this session's segments do not all have the same streams, so the stitched \
+                 file will be broken from that point on"
+            );
         }
 
         let dir = self.settings.sessions_dir();
@@ -473,8 +559,15 @@ impl Recorder {
         // file, which is nothing on a ten second clip and minutes on a session
         // that ran all evening - and a session is watched off the local disk,
         // not streamed while it downloads.
+        let started = Instant::now();
         match concat_segments(&self.ffmpeg, &ring, &segments, &out, false) {
             Ok(()) => {
+                log::info!(
+                    "session written to {} ({} bytes) in {:?}",
+                    out.display(),
+                    out.metadata().map(|m| m.len()).unwrap_or(0),
+                    started.elapsed(),
+                );
                 if was_running {
                     let _ = self.start();
                 }
@@ -484,6 +577,7 @@ impl Recorder {
                 })
             }
             Err(e) => {
+                log::warn!("stitching the session failed: {e}");
                 // Put the session back before restarting. Without this the
                 // restart runs with no session active, which clears the ring -
                 // and the ring is where the whole recording lives. A failed
@@ -506,6 +600,7 @@ impl Recorder {
     /// Abandon the session without writing it out.
     pub fn discard_session(&mut self) {
         if self.session.take().is_some() {
+            log::info!("discarding the session recording");
             let was_running = self.is_running();
             self.stop();
             if was_running {
@@ -749,6 +844,41 @@ fn concat_segments(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    fn recorder_with_session() -> Recorder {
+        let mut r = Recorder::new(
+            PathBuf::from("ffmpeg"),
+            Settings::default(),
+            &crate::ffmpeg::PIPELINES[0],
+        );
+        r.session = Some(Session {
+            started_at: std::time::SystemTime::now(),
+            label: "test".into(),
+            markers: Vec::new(),
+            cached_bytes: 0,
+            measured_at: None,
+            audio: None,
+            audio_changed: false,
+        });
+        r
+    }
+
+    /// Deferring the restart must not mean dropping the settings. They are kept
+    /// and take effect when the session ends; losing them would turn a silent
+    /// corruption into a silent ignore, which is not an improvement.
+    #[test]
+    fn settings_changed_during_a_session_are_still_stored() {
+        let mut r = recorder_with_session();
+        let next = Settings {
+            bitrate_kbps: 12_345,
+            ..Settings::default()
+        };
+
+        r.apply_settings(next, &crate::ffmpeg::PIPELINES[0]);
+
+        assert_eq!(r.settings().bitrate_kbps, 12_345);
+        assert!(r.session_active(), "the session survives a settings change");
+    }
 
     /// Writes segments oldest-first. NTFS timestamps are coarse, so the pause
     /// has to be generous enough that the ordering is unambiguous everywhere.

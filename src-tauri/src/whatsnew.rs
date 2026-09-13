@@ -20,6 +20,15 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.15",
+        lines: &[
+            "Changing a setting while a session is recording no longer restarts the encoder. It used to, and a session is stitched together from its segments without re-encoding - so changing the encoder, resolution, frame rate or bitrate part way through produced a recording that plays up to that moment and is broken after it. The new settings are kept and take effect when the session ends.",
+            "A session whose segments stop matching part way through - usually the audio device being lost - now says so in the log and when it is saved, instead of quietly writing a broken file.",
+            "Recording says what it is doing in the log at last: when the encoder starts and with what, when a session starts and stops, how many segments it had, and how long stitching took. Nothing about recording was written down before, which is why the logs from a whole day of this said nothing about it.",
+            "Installing an update is no longer reported as a crash the next time the app starts.",
+        ],
+    },
+    Release {
         version: "0.2.14",
         lines: &[
             "Fixes region capture, which 0.2.12 broke: every capture sat for a second and a half before the overlay appeared. The overlay was being built hidden so it could be shown only once it had painted, and a hidden window does not run its page at all, so it never got the chance to say it had.",

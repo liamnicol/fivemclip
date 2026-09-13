@@ -164,7 +164,13 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
                     crate::diagnostics::log(format!("update: {downloaded}/{total} bytes"));
                 }
             },
-            || crate::diagnostics::log("update downloaded, installing"),
+            || {
+                crate::diagnostics::log("update downloaded, installing");
+                // The installer kills the app here, so this is the last thing
+                // written and the only chance to say the exit was intended.
+                // Without it every update read as a crash on the next start.
+                crate::diagnostics::log(crate::diagnostics::UPDATE_EXIT);
+            },
         )
         .await
         .map_err(|e| format!("Update failed: {e}"))?;

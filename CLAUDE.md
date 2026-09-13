@@ -119,6 +119,36 @@ renders. The page separately keeps `#frame` hidden (`body.is-loading`) until
 `img.decode()` resolves, because on reuse the *previous* capture is still on
 screen until the new image decodes, and the window is already visible by then.
 
+**The capture crate logs through the `log` facade; `diagnostics` installs the
+sink.** A library that reaches into the binary's logger cannot be tested on its
+own, so `crates/capture` uses `log::info!` and `diagnostics::init` installs a
+`log::Log` that writes to the same file. The dependency was declared and unused
+for a long time and nothing in the crate logged at all - which is how four logs
+covering a whole day of recording, sessions and stitching came to contain not
+one line about any of it. Anything worth asking "did that happen?" about later
+gets a line.
+
+**Settings do not restart the encoder while a session is recording.** A session
+is stitched from its segments with `-c copy`, which needs every segment to have
+the same streams and parameters. `apply_settings` restarted unconditionally, so
+changing the encoder, resolution, fps or bitrate mid-session produced a file
+that plays up to the change and is broken after it, with nothing said anywhere.
+With auto-session on, a session is running most of the time, so most settings
+changes landed inside one. They are stored and take effect at the next restart -
+the same answer as refusing to move the output directory mid-session.
+
+**The audio device can vanish between encoder restarts, and that breaks a
+session too.** Same `-c copy` requirement: segments with an audio stream do not
+concatenate onto segments without one. `Session::audio` remembers what the first
+segment had and `audio_changed` records a disagreement, which is logged when it
+happens and again when the session is saved.
+
+**An update install is not a crash.** The installer kills the app without a
+clean exit, so `previous_end` looked at the log and reported a crash every single
+time anyone updated - in the one line people read first when investigating a real
+crash. `UPDATE_EXIT` is written at the handover, and whichever marker comes last
+wins.
+
 **Spawn threads through `diagnostics::thread`, not `std::thread::spawn`.** Every
 log line carries its thread name, and a log full of "unnamed" says nothing about
 which piece of work stalled.

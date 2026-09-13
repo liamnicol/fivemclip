@@ -1,4 +1,22 @@
-# Handoff: verify the region overlay on Windows
+# Handoff: crashes and corrupt sessions on Windows
+
+> **Update.** The region overlay part of this is **done** - four logs from a
+> 0.2.14 run show the freeze before both branches, no watchdog line, and no
+> delay. What is left is below; the region history is kept for context.
+>
+> The live questions are now **corrupt session recordings** and an app that
+> reportedly crashes. On the crash: four logs covering a full day contain no
+> crash at all. Two runs end in an update install and one exits cleanly. If it
+> is crashing, it is doing so in a way that leaves no log, so the first job is
+> to catch one - `fivemclip.log.1` through `.5` immediately after it happens,
+> before an update rotates them away.
+>
+> 0.2.15 makes the capture core log for the first time. Before it, nothing in
+> `crates/capture` logged anything, so recording, sessions, ffmpeg restarts and
+> stitching were all invisible. Get a fresh log from 0.2.15 with a session in it
+> before concluding anything.
+
+# Appendix: verify the region overlay on Windows
 
 Written by a Claude Code web session that has no Windows machine, for a session
 that does. Everything below was reasoned about and unit-tested on Linux; the

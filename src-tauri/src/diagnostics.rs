@@ -40,20 +40,53 @@ fn rotate(path: &Path) {
     }
 }
 
-/// Did the run that wrote this log stop on purpose?
+/// How the run that wrote a log ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviousRun {
+    /// Quit on purpose.
+    Clean,
+    /// Handed over to the updater, which restarts the app.
+    Update,
+    /// Stopped without saying anything.
+    Crashed,
+}
+
+/// How did the run that wrote this log end?
 ///
 /// `None` when there is no previous log to judge - a first run, rather than a
 /// silent one. Only the tail is read: the marker is the last thing written, and
 /// a long session's log is not worth loading to find out.
-fn ended_cleanly(path: &Path) -> Option<bool> {
+///
+/// Whichever marker comes *last* wins. An update logs its handover and can then
+/// still exit cleanly, and in that order the handover is the honest answer.
+fn previous_end(path: &Path) -> Option<PreviousRun> {
     let data = std::fs::read(path).ok()?;
-    let tail = &data[data.len().saturating_sub(4096)..];
-    Some(String::from_utf8_lossy(tail).contains(CLEAN_EXIT))
+    let tail = String::from_utf8_lossy(&data[data.len().saturating_sub(4096)..]).into_owned();
+    Some(match (tail.rfind(CLEAN_EXIT), tail.rfind(UPDATE_EXIT)) {
+        (None, None) => PreviousRun::Crashed,
+        (Some(_), None) => PreviousRun::Clean,
+        (None, Some(_)) => PreviousRun::Update,
+        (Some(c), Some(u)) => {
+            if u > c {
+                PreviousRun::Update
+            } else {
+                PreviousRun::Clean
+            }
+        }
+    })
 }
 
 /// Written on the way out, and looked for on the way back in. A log that simply
 /// stops is a crash; a log that ends with this is a quit.
 pub const CLEAN_EXIT: &str = "shut down cleanly";
+
+/// Written before handing over to the updater.
+///
+/// Installing an update kills the app without a clean exit, so without this
+/// every update was reported as a crash on the next start - and reported it in
+/// the one place anyone looks when investigating a real crash. Four logs went
+/// by before anyone noticed the "crash" was always an update.
+pub const UPDATE_EXIT: &str = "restarting to install an update";
 
 /// Point logging at a file beside the settings, keeping the last few runs so a
 /// crash is still readable after a restart or three.
@@ -64,7 +97,7 @@ pub fn init(settings_path: &Path) {
     }
     rotate(&path);
     // Judged after rotating, on the file the previous run actually wrote.
-    let previous_run = ended_cleanly(&generation(&path, 1));
+    let previous_run = previous_end(&generation(&path, 1));
     let _ = LOG_PATH.set(Some(path));
 
     // A panic on a background thread otherwise vanishes silently, taking the
@@ -85,13 +118,46 @@ pub fn init(settings_path: &Path) {
     // close it?" is the first question about every one of these, and the answer
     // is already on disk.
     match previous_run {
-        Some(false) => log(
+        Some(PreviousRun::Crashed) => log(
             "the previous run did not shut down cleanly - it crashed or was killed. \
              Its log is fivemclip.log.1",
         ),
-        Some(true) => log("the previous run shut down cleanly"),
+        Some(PreviousRun::Update) => {
+            log("the previous run restarted to install an update - not a crash")
+        }
+        Some(PreviousRun::Clean) => log("the previous run shut down cleanly"),
         None => {}
     }
+
+    // The capture crate logs through the `log` facade, because a library that
+    // reaches into the binary's logger cannot be tested on its own. Without
+    // this installed every one of those lines goes nowhere, which is how a
+    // twelve hour log came to contain nothing at all about recording.
+    let _ = ::log::set_boxed_logger(Box::new(Bridge));
+    ::log::set_max_level(::log::LevelFilter::Info);
+}
+
+/// Routes the `log` facade into this file.
+struct Bridge;
+
+impl ::log::Log for Bridge {
+    fn enabled(&self, metadata: &::log::Metadata) -> bool {
+        metadata.level() <= ::log::Level::Info
+    }
+
+    fn log(&self, record: &::log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        // Warnings are marked; info is the ordinary narrative and reads better
+        // without a prefix on every line.
+        match record.level() {
+            ::log::Level::Info => log(record.args()),
+            level => log(format_args!("{level}: {}", record.args())),
+        }
+    }
+
+    fn flush(&self) {}
 }
 
 pub fn log(message: impl Display) {
@@ -227,7 +293,7 @@ mod tests {
         let dir = dir("clean");
         let path = dir.join("fivemclip.log");
         std::fs::write(&path, format!("12:00:00 [\"main\"] {CLEAN_EXIT}\n")).unwrap();
-        assert_eq!(ended_cleanly(&path), Some(true));
+        assert_eq!(previous_end(&path), Some(PreviousRun::Clean));
     }
 
     #[test]
@@ -239,14 +305,45 @@ mod tests {
             "12:00:00 [\"region-capture\"] begin freezing the screen\n",
         )
         .unwrap();
-        assert_eq!(ended_cleanly(&path), Some(false));
+        assert_eq!(previous_end(&path), Some(PreviousRun::Crashed));
+    }
+
+    /// Installing an update kills the app without a clean exit. Reporting that
+    /// as a crash sent four logs' worth of investigation after a phantom.
+    #[test]
+    fn an_update_restart_is_not_a_crash() {
+        let dir = dir("updated");
+        let path = dir.join("fivemclip.log");
+        std::fs::write(
+            &path,
+            format!(
+                "12:00:00 [\"tokio-rt-worker\"] update downloaded, installing\n\
+                 12:00:01 [\"tokio-rt-worker\"] {UPDATE_EXIT}\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(previous_end(&path), Some(PreviousRun::Update));
+    }
+
+    /// An update that manages a tidy exit as well is still an update, because
+    /// the handover is the later of the two.
+    #[test]
+    fn the_last_marker_is_the_one_that_counts() {
+        let dir = dir("both");
+        let path = dir.join("fivemclip.log");
+        std::fs::write(
+            &path,
+            format!("12:00:00 {CLEAN_EXIT}\n12:00:01 {UPDATE_EXIT}\n"),
+        )
+        .unwrap();
+        assert_eq!(previous_end(&path), Some(PreviousRun::Update));
     }
 
     /// A first run has nothing to judge, and must not be reported as a crash.
     #[test]
     fn no_previous_log_is_not_a_crash() {
         let dir = dir("first");
-        assert_eq!(ended_cleanly(&dir.join("fivemclip.log")), None);
+        assert_eq!(previous_end(&dir.join("fivemclip.log")), None);
     }
 
     /// Only the tail is read, so a long session that ended cleanly is still
@@ -258,6 +355,6 @@ mod tests {
         let mut content = "a busy evening\n".repeat(50_000);
         content.push_str(&format!("12:00:00 [\"main\"] {CLEAN_EXIT}\n"));
         std::fs::write(&path, content).unwrap();
-        assert_eq!(ended_cleanly(&path), Some(true));
+        assert_eq!(previous_end(&path), Some(PreviousRun::Clean));
     }
 }
