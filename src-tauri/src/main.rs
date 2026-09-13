@@ -118,6 +118,30 @@ fn main() {
             diagnostics::init(&settings_path);
             let app_state = AppState::load(settings_path);
             let settings = app_state.settings.lock().clone();
+
+            // What this machine is set up to do, on one line at the top of
+            // every log. A crash that leaves no panic behind is usually
+            // something below Rust - a GPU encoder or a driver - and the first
+            // thing worth knowing is which one was in use. Deliberately no
+            // webhooks, keys or paths: logs get pasted into Discord.
+            diagnostics::log(format!(
+                "capture: {} · monitor {} · {} fps · {} kbps · {}s buffer · {}s clips{}",
+                settings
+                    .cached_pipeline
+                    .as_deref()
+                    .unwrap_or("not probed yet"),
+                settings.monitor_index,
+                settings.fps,
+                settings.bitrate_kbps,
+                settings.buffer_seconds,
+                settings.clip_seconds,
+                if settings.auto_session {
+                    " · auto-session"
+                } else {
+                    ""
+                },
+            ));
+
             app.manage(app_state);
 
             let handle = app.handle().clone();
@@ -265,7 +289,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                         }
                     }
                     state.stop_buffer(true);
-                    diagnostics::log("shut down cleanly");
+                    diagnostics::log(diagnostics::CLEAN_EXIT);
                     app.exit(0);
                 });
             }

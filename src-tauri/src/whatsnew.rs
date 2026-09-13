@@ -20,6 +20,14 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.13",
+        lines: &[
+            "Logs now survive restarts. The last five runs are kept as fivemclip.log.1 to .5, because only one was kept before - and installing an update restarts the app twice, which was enough to lose the log of the crash you were trying to diagnose.",
+            "Every log now opens by saying whether the previous run shut down cleanly or died, so \"did it crash?\" is answered on the first line rather than worked out.",
+            "It also records which encoder, monitor and bitrate were in use. A crash that leaves no error behind is usually a driver or a GPU encoder, and that line is the first clue. No webhooks or keys are ever written to it.",
+        ],
+    },
+    Release {
         version: "0.2.12",
         lines: &[
             "Region capture works again after the first one. Every capture but the first opened onto \"The captured frame is missing\" - the screen was only being frozen on the path that built the overlay, and the capture before it had deleted the frame. Broken since 0.2.7; sorry.",

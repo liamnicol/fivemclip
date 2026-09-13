@@ -219,6 +219,17 @@ without one.
 flushed per line. `diagnostics::span()` logs begin/end pairs: a `begin` with no
 `end` is a hang, and names where.
 
+**The last five runs are kept** as `fivemclip.log.1` to `.5`. One generation was
+not enough and failed in a specific way worth remembering: installing an update
+restarts the app twice, so the log of the crash being investigated was pushed
+off the end before anyone looked at it.
+
+**Each log says on its first lines whether the previous run crashed**, judged by
+whether the rotated log ends with `diagnostics::CLEAN_EXIT`, and what the
+capture was configured to do - encoder, monitor, fps, bitrate. A crash with no
+`PANIC` line is something below Rust, and the encoder is the first suspect.
+Nothing secret goes in the log: these get pasted into Discord.
+
 Devtools are enabled in release builds. Right-click any window, Inspect.
 
 ## Releasing
