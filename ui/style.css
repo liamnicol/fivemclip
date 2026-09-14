@@ -92,6 +92,30 @@ body { display: flex; flex-direction: column; }
 /* Beside a hotkey box that has taken a key FiveM needs. Not an error - the
    binding is allowed and will work everywhere except inside the game's own
    console - so it is coloured as a warning and says what to do about it. */
+/* Shown while the app is doing something long. Supplies its own gutter and
+   centring, like the update banner, because it is a sibling of <main> rather
+   than part of a view. */
+.busy {
+  display: flex; align-items: center; gap: 11px;
+  margin: 0 auto; max-width: 900px;
+  padding: 11px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.spinner {
+  width: 14px; height: 14px; flex: none;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Someone who turns animation off still needs to see that this is a wait, so
+   the ring stays and only the motion goes. */
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
 small.warn {
   display: block;
   margin-top: 5px;

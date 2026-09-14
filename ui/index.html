@@ -24,6 +24,14 @@
       </div>
     </header>
 
+    <!-- A long job in progress. A sibling of <main>, like the update banner,
+         so it is visible from Library and Settings too - the app being busy is
+         not a property of the page you happen to be on. -->
+    <div class="busy" id="busy-banner" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="busy-text"></span>
+    </div>
+
     <div class="update" id="update-banner" hidden>
       <div>
         <strong>Version <span id="update-version"></span> is available</strong>

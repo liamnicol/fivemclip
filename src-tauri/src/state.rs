@@ -38,10 +38,25 @@ pub struct AppState {
     /// take a screenshot. The overlay itself is the same window doing the same
     /// drag, so what happens on release is the only difference between them.
     pub picking_chat_region: AtomicBool,
+    /// What long job is running, in words, or None.
+    ///
+    /// Deliberately not behind the recorder's mutex: the whole point is to be
+    /// readable *while* that mutex is held for a minute by the thing being
+    /// described.
+    pub busy: Mutex<Option<String>>,
+    /// The last status read while the recorder was actually available, so a
+    /// poll that arrives during a save has something truthful to show instead
+    /// of "not recording".
+    pub last_status: Mutex<Option<fivemclip_capture::RecorderStatus>>,
     /// Hotkeys this run moved off keys FiveM needs, as (was, now). Reported to
     /// the user once: silently rebinding somebody's keyboard is its own bug.
     pub hotkeys_moved: Vec<(String, String)>,
 }
+
+/// Shown while a session is being written out. One string, because it appears
+/// in the window, the tray tooltip and the log, and three wordings of the same
+/// wait is how a user ends up thinking two different things are happening.
+pub const SAVING_SESSION: &str = "Saving your session - this can take a minute on a long one.";
 
 impl AppState {
     pub fn load(settings_path: PathBuf) -> Self {
@@ -83,7 +98,25 @@ impl AppState {
             manually_stopped: AtomicBool::new(false),
             paused_for_disk: AtomicBool::new(false),
             picking_chat_region: AtomicBool::new(false),
+            busy: Mutex::new(None),
+            last_status: Mutex::new(None),
         }
+    }
+
+    /// Run `f`, saying what is happening for as long as it takes.
+    ///
+    /// The message is cleared however `f` ends, panic included - a stuck
+    /// "Saving your session…" that never goes away is its own bug report.
+    pub fn while_busy<T>(&self, what: &str, f: impl FnOnce() -> T) -> T {
+        struct Clear<'a>(&'a Mutex<Option<String>>);
+        impl Drop for Clear<'_> {
+            fn drop(&mut self) {
+                *self.0.lock() = None;
+            }
+        }
+        *self.busy.lock() = Some(what.to_string());
+        let _clear = Clear(&self.busy);
+        f()
     }
 
     pub fn persist(&self) -> Result<(), String> {

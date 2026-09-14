@@ -22,6 +22,8 @@ pub const RELEASES: &[Release] = &[
     Release {
         version: "0.2.19",
         lines: &[
+            "The app no longer goes \"Not responding\" while a session is being saved. Closing the game stops the recording and stitches it together, which on a long session takes a minute - and the window froze for all of it. It was never a crash; the status check ran on the same thread and waited for the save to finish.",
+            "It now says what it is doing while it does it: a banner saying the session is being saved, visible from every page.",
             "Two hotkeys could end up on the same combination, and the second one then did nothing. 0.2.17 moved a saved F9 onto Ctrl+F9 without noticing that Toggle buffer was already there. Anything overlapping is separated on the next start, and the app says what it moved.",
             "A trim no longer looks hung at the end. Every frame is encoded at 100%, but ffmpeg still has to move the index to the front of the file, which on a long clip is a wait of its own - it says \"Finishing the file…\" instead of sitting on 100%.",
             "Trimming is written to the log: what was asked for, which encoder was used, how long ffmpeg took, and how long it took to put the result in place. None of it was recorded before, so a trim that stopped part way through left nothing to look at.",

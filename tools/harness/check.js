@@ -314,6 +314,30 @@ function settingsScenario(over = {}) {
   };
 }
 
+async function aLongSaveSaysSoRatherThanLookingHung() {
+  // Closing the game with a session running holds the app for as long as
+  // ffmpeg takes to stitch it. Windows paints that "Not responding"; the least
+  // the app can do is say what it is waiting on.
+  const h = await open("index.html", settingsScenario());
+  await h.page.waitForTimeout(600);
+  eq("nothing is claimed while idle", await h.page.evaluate(() => document.getElementById("busy-banner").hidden), true);
+
+  await h.page.evaluate(() =>
+    window.renderStatus({
+      running: false, seconds_buffered: 0, pipeline: "nvenc-d3d11", has_audio: true,
+      warnings: [], session_active: false, session_seconds: 0, session_bytes: 0,
+      session_markers: 0, ffmpeg_found: true, fivem_running: false,
+      estimated_buffer_bytes: 0, library_bytes: 0, free_bytes: 1e11,
+      space: "Fine", paused_for_disk: false, portable: false, version: "test",
+      busy: "Saving your session - this can take a minute on a long one.",
+    })
+  );
+  eq("the banner appears while saving", await h.page.evaluate(() => document.getElementById("busy-banner").hidden), false);
+  ok("and says what is happening", (await h.page.textContent("#busy-text")).includes("Saving your session"));
+  eq("the status line agrees", await h.page.textContent("#status-text"), "Saving…");
+  await h.done();
+}
+
 async function gameKeyHotkeysAreFlagged() {
   // F8 is the FiveM console. Bound bare, the console opens and then will not
   // close, because a hotkey is not shared with the window that has focus.
@@ -352,6 +376,7 @@ async function theDefaultHotkeysAreClean() {
     aFailedTrimLeavesTheWindowUsable,
     theSourceIsReleasedBeforeItIsReplaced,
     aTrimShowsHowFarAlongItIs,
+    aLongSaveSaysSoRatherThanLookingHung,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
   ]) {

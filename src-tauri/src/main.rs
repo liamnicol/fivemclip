@@ -24,7 +24,7 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 
-use state::AppState;
+use state::{AppState, SAVING_SESSION};
 
 /// Raise the copy that is already running, instead of starting a second one.
 ///
@@ -325,9 +325,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                         .unwrap_or(false);
                     if saving {
                         // Footage the user asked to keep; worth the wait.
-                        if let Some(recorder) = state.recorder.lock().as_mut() {
-                            let _ = recorder.stop_session();
-                        }
+                        state.while_busy(SAVING_SESSION, || {
+                            if let Some(recorder) = state.recorder.lock().as_mut() {
+                                let _ = recorder.stop_session();
+                            }
+                        });
                     }
                     state.stop_buffer(true);
                     diagnostics::log(diagnostics::CLEAN_EXIT);
@@ -390,10 +392,10 @@ fn auto_session(
     if trigger_was_up && !trigger_up {
         *want = false;
         if active {
-            let saved = {
+            let saved = state.while_busy(SAVING_SESSION, || {
                 let mut guard = state.recorder.lock();
                 guard.as_mut().map(|r| r.stop_session())
-            };
+            });
             match saved {
                 Some(Ok(saved)) => {
                     state.markers.set(&saved.path, saved.markers.clone());

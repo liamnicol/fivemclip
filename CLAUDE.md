@@ -45,6 +45,16 @@ tools/harness/      Drives ui/ in Chromium with a stubbed Tauri backend
 **Comments explain why, not what.** Several of them record a bug that has
 already been fixed once; deleting them invites it back.
 
+**A sync command must never wait on the recorder's mutex.** Stopping a session
+holds it for as long as ffmpeg takes to stitch - 80 seconds on an eleven gigabyte
+one - and `get_status`, which the UI polls, is sync and so runs on the main
+thread. It blocked, the message loop stopped, and Windows painted the whole
+window "Not responding" while the app was working perfectly. It uses `try_lock`
+now and falls back to `state.last_status`, which is closer to the truth than the
+"nothing is recording" it would otherwise flicker to. `AppState::while_busy`
+sets a message that is readable *without* that mutex - that is the whole reason
+it does not live behind it - and the front end shows it.
+
 **Anything touching ffmpeg goes in an async command.** Sync Tauri commands run
 on the main thread, and blocking it froze the whole app - including the tray
 Quit item, making the process unkillable except from Task Manager.

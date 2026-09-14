@@ -68,7 +68,17 @@ function renderStatus(status) {
   $("portable-badge").hidden = !status.portable;
   $("app-version").textContent = status.version ?? "—";
 
-  if (!status.ffmpeg_found) {
+  // First, above everything else: a long job is the one thing the user is
+  // actively waiting on, and closing the game with a session running holds the
+  // app for as long as ffmpeg takes to stitch it. Saying nothing is what made
+  // that read as a crash.
+  $("busy-banner").hidden = !status.busy;
+  if (status.busy) $("busy-text").textContent = status.busy;
+
+  if (status.busy) {
+    dot.className = "dot warn";
+    text.textContent = "Saving…";
+  } else if (!status.ffmpeg_found) {
     dot.className = "dot warn";
     text.textContent = "ffmpeg missing";
   } else if (status.paused_for_disk) {

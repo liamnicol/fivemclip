@@ -32,6 +32,9 @@ pub struct Status {
     /// So a bug report can say which build it came from without the reporter
     /// having to go looking.
     pub version: &'static str,
+    /// A long job in progress, in words, or null. Saving a session can take a
+    /// minute and used to look exactly like a hang.
+    pub busy: Option<String>,
 }
 
 #[tauri::command]
@@ -99,22 +102,41 @@ pub fn save_settings(
     Ok(settings)
 }
 
+/// What to report when there is no recorder at all.
+fn idle_status() -> RecorderStatus {
+    RecorderStatus {
+        running: false,
+        seconds_buffered: 0,
+        pipeline: "not started".into(),
+        has_audio: false,
+        warnings: Vec::new(),
+        session_active: false,
+        session_seconds: 0,
+        session_bytes: 0,
+        session_markers: 0,
+    }
+}
+
 #[tauri::command]
 pub fn get_status(state: State<AppState>) -> Status {
     let settings = state.settings.lock().clone();
-    let recorder = match state.recorder.lock().as_mut() {
-        Some(r) => r.status(),
-        None => RecorderStatus {
-            running: false,
-            seconds_buffered: 0,
-            pipeline: "not started".into(),
-            has_audio: false,
-            warnings: Vec::new(),
-            session_active: false,
-            session_seconds: 0,
-            session_bytes: 0,
-            session_markers: 0,
-        },
+    // try_lock, never lock. This is a sync command, so it runs on the main
+    // thread, and stopping a session holds the recorder for as long as ffmpeg
+    // takes to stitch it - 80 seconds on a long one. Blocking here stops the
+    // message loop, and Windows paints the whole window "Not responding" while
+    // the app is in fact working perfectly.
+    let recorder = match state.recorder.try_lock() {
+        Some(mut guard) => {
+            let status = match guard.as_mut() {
+                Some(r) => r.status(),
+                None => idle_status(),
+            };
+            *state.last_status.lock() = Some(status.clone());
+            status
+        }
+        // Busy saving. The last known state is closer to the truth than
+        // "nothing is recording", which is what this used to flicker to.
+        None => state.last_status.lock().clone().unwrap_or_else(idle_status),
     };
     let free = fivemclip_capture::disk::free_for(&settings);
     Status {
@@ -135,6 +157,7 @@ pub fn get_status(state: State<AppState>) -> Status {
         // to the bare version for a local build, which is the only case where
         // "which build is this" has an obvious answer.
         version: option_env!("FIVEMCLIP_BUILD").unwrap_or(env!("CARGO_PKG_VERSION")),
+        busy: state.busy.lock().clone(),
     }
 }
 
@@ -709,13 +732,13 @@ pub async fn stop_session(app: AppHandle) -> Result<String, String> {
     // the UI for it would look exactly like a hang.
     let saved = tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
-        let saved = {
+        let saved = state.while_busy(crate::state::SAVING_SESSION, || {
             let mut guard = state.recorder.lock();
             let recorder = guard
                 .as_mut()
                 .ok_or_else(|| "No session is being recorded.".to_string())?;
-            recorder.stop_session()?
-        };
+            recorder.stop_session()
+        })?;
         // Written only once the file it describes exists, so a failed save
         // cannot leave markers pointing at nothing.
         state.markers.set(&saved.path, saved.markers.clone());
