@@ -155,6 +155,26 @@ the writer, so reading stdout to completion first waits on a process that is
 waiting on us. `-nostats` matters too - without it the same progress numbers go
 to stderr and push whatever went wrong out of the tail `explain` reads.
 
+**Blackouts are a list of timed rectangles, not one region.** The chat scrolls,
+so covering the line a message is on means covering a different rectangle as it
+moves up the screen; covering the whole region for the whole clip to avoid that
+is what made the feature unusable on footage anyone wanted to watch.
+`trim::Blackout` carries a region and a time range, `chat_box_filters` builds
+one `drawbox` per entry, and `Blackout::always` is the old whole-clip behaviour
+expressed in the same shape rather than a branch. **The times are relative to
+the trimmed output, not the source** - `-ss` has already moved the origin by the
+time the filter sees a timestamp.
+
+**Chat channels cannot be told apart by colour.** It was the obvious approach
+and it is wrong: each faction picks its own colour, so two faction lines can be
+green and blue while an unrelated channel matches either. Measured on real
+footage - hue separates the *tags* cleanly (`[INFO]` 60°, `[RADIO]` 38°,
+`[DISPATCH]` 210°) but not the *channels*, which is the thing being asked for.
+The constant is the literal word in the tag, so telling them apart means reading
+the text. Luma is worse still: average brightness separates chat from no-chat on
+a bright scene and not at all on a dark one, and the fraction of bright pixels
+inverts between the two.
+
 **Hiding the chat and a fast trim are mutually exclusive.** A stream copy cannot
 paint over anything. `trim()` refuses the combination with the other argument
 validation, before it touches the disk, and the trimmer disables Fast rather

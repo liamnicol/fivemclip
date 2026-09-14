@@ -30,7 +30,7 @@ use crate::ffmpeg::{self, Pipeline};
 pub const MIN_SECONDS: f64 = 0.25;
 
 /// What to cut, and how.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Request {
     /// Seconds from the start of the file.
     pub start: f64,
@@ -44,9 +44,71 @@ pub struct Request {
     /// than by cutting more. Ignored when `fast` is set, because a stream copy
     /// cannot change the bitrate it is copying.
     pub fit_bytes: Option<u64>,
-    /// Cover this part of every frame with solid black - the chat box, for a
-    /// server whose rules do not allow showing staff chat.
-    pub hide_chat: Option<ChatRegion>,
+    /// Parts of the picture to cover with solid black, each for as long as it
+    /// is asked for. Empty means nothing is hidden.
+    ///
+    /// A list rather than one rectangle because the chat scrolls: covering the
+    /// line a message is on means covering a different rectangle as it moves up
+    /// the screen, and covering the whole region for the whole clip to avoid
+    /// that is what made this unusable on footage anyone wanted to watch.
+    pub hide_chat: Vec<Blackout>,
+}
+
+/// One rectangle to paint out, and when.
+///
+/// Times are seconds from the start of the *trimmed* clip, not the source:
+/// `-ss` has already moved the origin by the time the filter sees a timestamp,
+/// so a range measured against the original file would land in the wrong place
+/// on any trim that does not start at zero.
+///
+/// A whole-clip blackout is `from: 0.0` with `to: f64::INFINITY`, which is what
+/// the always-on behaviour became rather than a special case to branch on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Blackout {
+    pub region: ChatRegion,
+    pub from: f64,
+    pub to: f64,
+}
+
+impl Blackout {
+    /// Covers the whole clip, whatever length it turns out to be.
+    pub fn always(region: ChatRegion) -> Self {
+        Self {
+            region,
+            from: 0.0,
+            to: f64::INFINITY,
+        }
+    }
+
+    pub fn is_always(&self) -> bool {
+        self.from <= 0.0 && self.to.is_infinite()
+    }
+}
+
+/// The filter chain that covers every blackout in `boxes`.
+///
+/// One `drawbox` each, gated with `enable` unless it runs the whole way. The
+/// chain is ordered as given; overlapping boxes are harmless, they just paint
+/// the same pixels twice.
+pub fn chat_box_filters(boxes: &[Blackout]) -> String {
+    boxes
+        .iter()
+        .map(|b| {
+            let draw = chat_box_filter(&b.region);
+            if b.is_always() {
+                return draw;
+            }
+            // `between` is inclusive, and the timestamps ffmpeg tests are frame
+            // times - so a range that ends exactly on a frame still covers it.
+            let to = if b.to.is_finite() { b.to } else { 1e9 };
+            format!(
+                "{draw}:enable='between(t,{:.3},{:.3})'",
+                b.from.max(0.0),
+                to
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// The filter that covers `region` on every frame.
@@ -142,7 +204,7 @@ pub fn trim_with_progress(
         replace,
         fast,
         fit_bytes,
-        hide_chat,
+        ref hide_chat,
     } = *request;
     let duration = end - start;
     if !start.is_finite() || !end.is_finite() || start < 0.0 {
@@ -158,7 +220,7 @@ pub fn trim_with_progress(
     // for a file that cannot exist - and of the two ways to resolve it on the
     // user's behalf, one throws away the speed they asked for and the other
     // hands back a clip still showing what they were covering up.
-    if fast && hide_chat.is_some() {
+    if fast && !hide_chat.is_empty() {
         return Err(
             "Hiding the chat means re-encoding, which a fast trim does not do. \
              Turn Fast off, or turn off Hide chat."
@@ -212,7 +274,7 @@ pub fn trim_with_progress(
         end,
         duration,
         if fast { "stream copy" } else { "re-encode" },
-        if hide_chat.is_some() {
+        if !hide_chat.is_empty() {
             ", chat hidden"
         } else {
             ""
@@ -231,7 +293,7 @@ pub fn trim_with_progress(
             source,
             start,
             duration,
-            hide_chat.as_ref(),
+            hide_chat,
             &scratch,
             progress,
         ) {
@@ -333,7 +395,7 @@ fn run(
     source: &Path,
     start: f64,
     duration: f64,
-    hide_chat: Option<&ChatRegion>,
+    hide_chat: &[Blackout],
     out: &Path,
     progress: &(dyn Fn(Progress) + Sync),
 ) -> Result<(), String> {
@@ -421,7 +483,7 @@ fn args(
     source: &Path,
     start: f64,
     duration: f64,
-    hide_chat: Option<&ChatRegion>,
+    hide_chat: &[Blackout],
     out: &Path,
 ) -> Vec<String> {
     let bitrate = format!("{}k", settings.bitrate_kbps);
@@ -447,8 +509,8 @@ fn args(
     match encoder {
         None => a.extend(["-c".into(), "copy".into()]),
         Some(encoder) => {
-            if let Some(region) = hide_chat {
-                a.extend(["-vf".into(), chat_box_filter(region)]);
+            if !hide_chat.is_empty() {
+                a.extend(["-vf".into(), chat_box_filters(hide_chat)]);
             }
             a.extend(["-c:v".into(), encoder.into()]);
             // Quality-oriented rather than the capture path's constant bitrate:
@@ -505,7 +567,7 @@ mod tests {
             Path::new("clip.mp4"),
             12.5,
             8.0,
-            None,
+            &[],
             Path::new("out.mp4"),
         );
         let ss = a.iter().position(|x| x == "-ss").unwrap();
@@ -553,7 +615,7 @@ mod tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .unwrap_err();
@@ -641,7 +703,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .expect("trim succeeds");
@@ -684,7 +746,7 @@ mod ffmpeg_tests {
                 replace: true,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .expect("trim succeeds");
@@ -760,7 +822,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: true,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .unwrap();
@@ -778,7 +840,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .unwrap();
@@ -908,7 +970,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: Some(region),
+                hide_chat: vec![Blackout::always(region)],
             },
         )
         .expect("trim succeeds");
@@ -953,7 +1015,7 @@ mod ffmpeg_tests {
                 replace: false,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
             &|p| seen.lock().unwrap().push(p),
         )
@@ -977,6 +1039,113 @@ mod ffmpeg_tests {
         assert_eq!(seen.last().map(|p| p.fraction), Some(1.0), "{fractions:?}");
         assert!(out.is_file());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A timed blackout must cover the chat while it is asked to and leave the
+    /// picture alone either side of that. Measured at three moments with the
+    /// same clip, so "it went black" cannot be the region being dark anyway.
+    #[test]
+    fn a_timed_blackout_covers_only_its_own_range() {
+        let Some(ffmpeg) = ffmpeg_for_test() else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_FFMPEG");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("fivemclip-timed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("Clip.mp4");
+
+        // Bright all the way through, so darkness can only come from the box.
+        let built = ffmpeg::command(&ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=white:size=640x360:rate=30:duration=9",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                &source.to_string_lossy(),
+            ])
+            .output()
+            .expect("ffmpeg runs");
+        assert!(built.status.success());
+
+        let region = ChatRegion {
+            x: 0.0,
+            y: 0.0,
+            w: 0.5,
+            h: 0.5,
+        };
+        let out = trim(
+            &ffmpeg,
+            &Settings::default(),
+            None,
+            &source,
+            &Request {
+                start: 0.0,
+                end: 9.0,
+                replace: false,
+                fast: false,
+                fit_bytes: None,
+                hide_chat: vec![Blackout {
+                    region,
+                    from: 3.0,
+                    to: 6.0,
+                }],
+            },
+        )
+        .expect("the trim works");
+
+        let at = |t: f64| region_average_at(&ffmpeg, &out, &region, t)[0];
+        let (before, during, after) = (at(1.5), at(4.5), at(7.5));
+        assert!(
+            before > 200,
+            "before the range it should still be white: {before}"
+        );
+        assert!(during < 40, "inside the range it should be black: {during}");
+        assert!(
+            after > 200,
+            "after the range it should be white again: {after}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The average colour of `region` at one moment.
+    fn region_average_at(ffmpeg: &Path, file: &Path, region: &ChatRegion, at: f64) -> [u8; 3] {
+        let crop = format!(
+            "crop=in_w*{:.4}:in_h*{:.4}:in_w*{:.4}:in_h*{:.4},scale=1:1",
+            region.w, region.h, region.x, region.y
+        );
+        let out = ffmpeg::command(ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                &format!("{at:.3}"),
+                "-i",
+                &file.to_string_lossy(),
+                "-frames:v",
+                "1",
+                "-vf",
+                &crop,
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ])
+            .output()
+            .expect("ffmpeg runs");
+        let p = out.stdout;
+        assert!(p.len() >= 3, "no pixel came back at {at}s");
+        [p[0], p[1], p[2]]
     }
 
     #[test]
@@ -1003,7 +1172,7 @@ mod ffmpeg_tests {
                 replace: true,
                 fast: false,
                 fit_bytes: None,
-                hide_chat: None,
+                hide_chat: Vec::new(),
             },
         )
         .unwrap_err();
@@ -1124,11 +1293,71 @@ mod chat_tests {
             Path::new("clip.mp4"),
             0.0,
             5.0,
-            Some(&r),
+            &[Blackout::always(r)],
             Path::new("out.mp4"),
         );
         let vf = a.iter().position(|x| x == "-vf").expect("-vf is passed");
         assert_eq!(a[vf + 1], chat_box_filter(&r));
+    }
+
+    #[test]
+    fn a_whole_clip_blackout_carries_no_enable_clause() {
+        // It runs the whole way, so gating it on time is noise in the filter
+        // graph and one more thing to get wrong.
+        let f = chat_box_filters(&[Blackout::always(region())]);
+        assert!(f.contains("drawbox="), "{f}");
+        assert!(!f.contains("enable="), "{f}");
+    }
+
+    #[test]
+    fn a_timed_blackout_is_gated_on_its_range() {
+        let f = chat_box_filters(&[Blackout {
+            region: region(),
+            from: 2.5,
+            to: 7.25,
+        }]);
+        assert!(f.contains("enable='between(t,2.500,7.250)'"), "{f}");
+    }
+
+    /// The chat scrolls, so one message is several rectangles over its life.
+    #[test]
+    fn every_blackout_gets_its_own_box_in_order() {
+        let a = ChatRegion {
+            x: 0.0,
+            y: 0.1,
+            w: 0.3,
+            h: 0.05,
+        };
+        let b = ChatRegion {
+            x: 0.0,
+            y: 0.2,
+            w: 0.3,
+            h: 0.05,
+        };
+        let f = chat_box_filters(&[
+            Blackout {
+                region: a,
+                from: 0.0,
+                to: 1.0,
+            },
+            Blackout {
+                region: b,
+                from: 1.0,
+                to: 2.0,
+            },
+        ]);
+        assert_eq!(f.matches("drawbox=").count(), 2, "{f}");
+        let first = f.find("0.1000").expect("the first box");
+        let second = f.find("0.2000").expect("the second box");
+        assert!(
+            first < second,
+            "the order given must be the order drawn: {f}"
+        );
+    }
+
+    #[test]
+    fn nothing_to_hide_is_an_empty_chain() {
+        assert_eq!(chat_box_filters(&[]), "");
     }
 
     #[test]
@@ -1139,7 +1368,7 @@ mod chat_tests {
             Path::new("clip.mp4"),
             0.0,
             5.0,
-            None,
+            &[],
             Path::new("out.mp4"),
         );
         assert!(!a.iter().any(|x| x == "-vf"));
@@ -1161,7 +1390,7 @@ mod chat_tests {
                 replace: false,
                 fast: true,
                 fit_bytes: None,
-                hide_chat: Some(region()),
+                hide_chat: vec![Blackout::always(region())],
             },
         )
         .unwrap_err();

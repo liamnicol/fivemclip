@@ -1055,7 +1055,14 @@ pub async fn trim_clip(
             replace,
             fast,
             fit_bytes,
-            hide_chat: hide_chat.then_some(settings.chat_region).flatten(),
+            // Still whole-clip for now: the plumbing takes a list of timed
+            // boxes, and nothing yet produces more than one.
+            hide_chat: hide_chat
+                .then_some(settings.chat_region)
+                .flatten()
+                .map(fivemclip_capture::trim::Blackout::always)
+                .into_iter()
+                .collect(),
         };
         let duration = (end - start).max(0.0);
 
