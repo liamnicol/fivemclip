@@ -175,6 +175,25 @@ expressed in the same shape rather than a branch. **The times are relative to
 the trimmed output, not the source** - `-ss` has already moved the origin by the
 time the filter sees a timestamp.
 
+**The chat scanner is checked against real footage, not invented footage.**
+`chatscan::real_footage_tests` runs the whole thing on a recording and skips
+without `FIVEMCLIP_TEST_CHAT_CLIP` and `FIVEMCLIP_TEST_MODELS`. It has earned
+this twice: a synthetic clip led to modelling the chat as a dark backing panel
+it does not have, and then to colour-keying the channels, which cannot work.
+It caught two more on first run - a `[Faction System]` tag over a bright window
+reads as `ofP?ction System`, two characters wrong in seven, which the original
+match tolerance missed; and an untagged `/me` line under a matched one inherits
+its channel and gets covered. Both are pinned as tests now, the second as a
+known limitation.
+
+**Match tags loosely and only at the front of the line.** OCR of game text is
+reliably wrong by a character or two - `fPaction`, `ADVERTlSING`, `RADlO`,
+`IRADIO]` - so exact matching misses the lines that matter while looking like
+it works. `mentions` allows one wrong character per three and searches only the
+first three words, because "my faction is recruiting" said in ordinary chat is
+not faction chat and blacking out that sentence would be both wrong and
+baffling. The brackets are no help: OCR loses them.
+
 **Chat channels cannot be told apart by colour.** It was the obvious approach
 and it is wrong: each faction picks its own colour, so two faction lines can be
 green and blue while an unrelated channel matches either. Measured on real
