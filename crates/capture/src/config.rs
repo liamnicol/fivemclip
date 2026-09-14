@@ -388,23 +388,83 @@ impl Settings {
     /// Returns what it moved, so the app can say so rather than silently
     /// rebinding someone's keyboard.
     pub fn migrate_hotkeys(&mut self) -> Vec<(String, String)> {
-        let mut moved = Vec::new();
-        for slot in [
+        let mut slots = [
             &mut self.hotkey_save_clip,
             &mut self.hotkey_screenshot,
             &mut self.hotkey_region,
             &mut self.hotkey_session,
             &mut self.hotkey_toggle_buffer,
             &mut self.hotkey_marker,
-        ] {
+        ];
+
+        // What is spoken for already, including the bindings that are not being
+        // moved. Adding a modifier without looking is how the first version of
+        // this turned a saved F9 into Ctrl+F9 while Toggle buffer was already
+        // on Ctrl+F9 - one of them then lost the race to register and simply
+        // stopped working, with only a line in the log to say so.
+        let mut taken: Vec<String> = slots
+            .iter()
+            .filter(|c| !clashes_with_fivem(c))
+            .map(|c| c.trim().to_ascii_lowercase())
+            .filter(|c| !c.is_empty())
+            .collect();
+
+        let mut moved = Vec::new();
+        for slot in slots.iter_mut() {
             if !clashes_with_fivem(slot) {
                 continue;
             }
-            let was = slot.clone();
-            let now = format!("Ctrl+{}", was.trim());
+            let was = slot.trim().to_string();
+            // Ctrl first, because it keeps the muscle memory closest. The rest
+            // are only reached when it is already in use.
+            let Some(now) = ["Ctrl", "Alt", "Ctrl+Shift"]
+                .iter()
+                .map(|m| format!("{m}+{was}"))
+                .find(|c| !taken.contains(&c.to_ascii_lowercase()))
+            else {
+                // Every candidate spoken for. Leaving it alone beats moving it
+                // on top of something that works.
+                continue;
+            };
+            taken.push(now.to_ascii_lowercase());
             moved.push((was, now.clone()));
-            *slot = now;
+            **slot = now;
         }
+
+        // Then break any ties, however they got there. The first version of
+        // this migration created one - a saved F9 moved onto Ctrl+F9 while
+        // Toggle buffer already had it - and wrote it to everyone's settings
+        // file, where the game-key pass above will never look again because
+        // Ctrl+F9 is not one of FiveM's. Whoever registers first keeps it, so
+        // the later one is the one that moves, matching what the app does.
+        let mut seen: Vec<String> = Vec::new();
+        for slot in slots.iter_mut() {
+            let current = slot.trim().to_string();
+            if current.is_empty() {
+                continue;
+            }
+            let lower = current.to_ascii_lowercase();
+            if !seen.contains(&lower) {
+                seen.push(lower);
+                continue;
+            }
+            let bare = current.rsplit('+').next().unwrap_or(&current).to_string();
+            let Some(now) = ["Ctrl", "Alt", "Ctrl+Shift", "Alt+Shift"]
+                .iter()
+                .map(|m| format!("{m}+{bare}"))
+                .find(|c| {
+                    let c = c.to_ascii_lowercase();
+                    !seen.contains(&c) && !taken.contains(&c)
+                })
+            else {
+                continue;
+            };
+            seen.push(now.to_ascii_lowercase());
+            taken.push(now.to_ascii_lowercase());
+            moved.push((current, now.clone()));
+            **slot = now;
+        }
+
         moved
     }
 
@@ -572,12 +632,92 @@ mod tests {
         let moved = s.migrate_hotkeys();
 
         assert_eq!(s.hotkey_session, "Ctrl+F8");
-        assert_eq!(s.hotkey_save_clip, "Ctrl+F9");
         assert_eq!(s.hotkey_marker, "Ctrl+F7");
-        // Already carried a modifier, so it was never in the game's way.
+        // Already carried a modifier, so it was never in the game's way - and
+        // it keeps Ctrl+F9, which pushes the migrated F9 onto another modifier
+        // rather than onto it.
         assert_eq!(s.hotkey_toggle_buffer, "Ctrl+F9");
+        assert_eq!(s.hotkey_save_clip, "Alt+F9");
         assert_eq!(moved.len(), 5, "{moved:?}");
         assert!(moved.contains(&("F8".to_string(), "Ctrl+F8".to_string())));
+    }
+
+    /// The exact set that shipped, and what it did on a real machine: F9
+    /// became Ctrl+F9 while Toggle buffer was already Ctrl+F9, so one of them
+    /// failed to register and silently stopped working.
+    #[test]
+    fn migrating_never_moves_a_hotkey_on_top_of_one_that_works() {
+        let mut s = Settings {
+            hotkey_save_clip: "F9".into(),
+            hotkey_screenshot: "F10".into(),
+            hotkey_region: "PrintScreen".into(),
+            hotkey_session: "F8".into(),
+            hotkey_toggle_buffer: "Ctrl+F9".into(),
+            hotkey_marker: "F7".into(),
+            ..Settings::default()
+        };
+        s.migrate_hotkeys();
+
+        let all = [
+            &s.hotkey_save_clip,
+            &s.hotkey_screenshot,
+            &s.hotkey_region,
+            &s.hotkey_session,
+            &s.hotkey_toggle_buffer,
+            &s.hotkey_marker,
+        ];
+        let mut lower: Vec<String> = all.iter().map(|c| c.to_ascii_lowercase()).collect();
+        lower.sort();
+        let before = lower.len();
+        lower.dedup();
+        assert_eq!(
+            lower.len(),
+            before,
+            "two hotkeys ended up the same: {all:?}"
+        );
+
+        // The one that was already fine is not the one that moves.
+        assert_eq!(s.hotkey_toggle_buffer, "Ctrl+F9");
+        assert_ne!(s.hotkey_save_clip, "Ctrl+F9");
+        assert!(!clashes_with_fivem(&s.hotkey_save_clip));
+    }
+
+    /// The state 0.2.17 wrote to real settings files: two actions on Ctrl+F9,
+    /// neither of them a game key, so the pass above will never look at them.
+    /// One of the two silently does nothing until this untangles it.
+    #[test]
+    fn a_collision_already_saved_is_untangled() {
+        let mut s = Settings {
+            hotkey_save_clip: "Ctrl+F9".into(),
+            hotkey_toggle_buffer: "Ctrl+F9".into(),
+            ..Settings::default()
+        };
+        let moved = s.migrate_hotkeys();
+
+        assert_ne!(
+            s.hotkey_save_clip.to_ascii_lowercase(),
+            s.hotkey_toggle_buffer.to_ascii_lowercase()
+        );
+        // The first to register keeps it; the later one moves.
+        assert_eq!(s.hotkey_save_clip, "Ctrl+F9");
+        assert!(!moved.is_empty(), "the move has to be reported, not silent");
+    }
+
+    #[test]
+    fn nothing_moves_when_every_binding_is_already_distinct() {
+        let mut s = Settings::default();
+        assert!(s.migrate_hotkeys().is_empty());
+    }
+
+    #[test]
+    fn a_binding_that_is_not_a_game_key_is_left_exactly_alone() {
+        let mut s = Settings {
+            hotkey_region: "PrintScreen".into(),
+            hotkey_session: "F8".into(),
+            ..Settings::default()
+        };
+        s.migrate_hotkeys();
+        assert_eq!(s.hotkey_region, "PrintScreen");
     }
 
     #[test]

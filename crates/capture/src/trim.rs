@@ -204,8 +204,26 @@ pub fn trim_with_progress(
         settings.bitrate_kbps = bitrate_to_fit(bytes, duration);
     }
 
+    log::info!(
+        "trimming {} -> {}: {:.3}s to {:.3}s ({:.3}s), {}{}{}",
+        source.display(),
+        target.display(),
+        start,
+        end,
+        duration,
+        if fast { "stream copy" } else { "re-encode" },
+        if hide_chat.is_some() {
+            ", chat hidden"
+        } else {
+            ""
+        },
+        if replace { ", replacing" } else { "" },
+    );
+
     let mut last = String::new();
     for encoder in attempts {
+        let started = std::time::Instant::now();
+        log::info!("trim: trying {}", encoder.unwrap_or("stream copy"));
         match run(
             ffmpeg_path,
             &settings,
@@ -218,12 +236,24 @@ pub fn trim_with_progress(
             progress,
         ) {
             Ok(()) => {
+                log::info!(
+                    "trim: ffmpeg finished in {:?}, {} bytes",
+                    started.elapsed(),
+                    scratch.metadata().map(|m| m.len()).unwrap_or(0),
+                );
+                // Timed separately and on purpose. Renaming over the source is
+                // where Windows refuses if anything still has the file open,
+                // and it is the step after the progress bar has already reached
+                // 100% - so a stall here is invisible unless it is logged.
+                let renaming = std::time::Instant::now();
                 let moved = std::fs::rename(&scratch, &target)
                     .map_err(|e| format!("could not save the trimmed clip: {e}"));
                 if let Err(e) = moved {
+                    log::warn!("trim: could not move the result into place: {e}");
                     let _ = std::fs::remove_file(&scratch);
                     return Err(e);
                 }
+                log::info!("trim: moved into place in {:?}", renaming.elapsed());
                 // Trimming a session produces an mp4 from an mkv, so replacing
                 // leaves the untrimmed original sitting there under its old
                 // extension unless it is removed on purpose.
@@ -233,6 +263,11 @@ pub fn trim_with_progress(
                 return Ok(target);
             }
             Err(e) => {
+                log::warn!(
+                    "trim: {} failed after {:?} - {e}",
+                    encoder.unwrap_or("stream copy"),
+                    started.elapsed(),
+                );
                 let _ = std::fs::remove_file(&scratch);
                 last = e;
             }
@@ -342,17 +377,36 @@ fn run(
         }
     }
 
+    // stdout is closed, so every frame is encoded - but ffmpeg is not done.
+    // `+faststart` rewrites the whole file to put the index at the front, and
+    // on a long clip that is a real wait with nothing to report, which is
+    // exactly what "it got to 100% and then nothing happened" was.
+    progress(Progress {
+        fraction: 1.0,
+        speed: None,
+    });
+    let finishing = std::time::Instant::now();
     let status = child
         .wait()
         .map_err(|e| format!("could not wait for ffmpeg: {e}"))?;
     let stderr = draining.join().unwrap_or_default();
+    if finishing.elapsed() > std::time::Duration::from_secs(1) {
+        log::info!(
+            "trim: ffmpeg spent {:?} after the last frame, writing the index",
+            finishing.elapsed(),
+        );
+    }
 
     if status.success() && out.is_file() {
-        progress(Progress {
-            fraction: 1.0,
-            speed: None,
-        });
         return Ok(());
+    }
+    // An exit code with nothing on stderr means it was killed rather than that
+    // it disagreed with something - worth saying, because "ffmpeg failed
+    // without saying why" reads as a mystery when it is actually a signal.
+    if stderr.trim().is_empty() {
+        return Err(format!(
+            "ffmpeg stopped without an error ({status}) - it was most likely killed."
+        ));
     }
     Err(ffmpeg::explain(&stderr))
 }

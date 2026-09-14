@@ -156,12 +156,24 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     }
 
     let mut downloaded = 0usize;
+    // Every tenth, not every chunk. One 49 MB download wrote 1448 lines - the
+    // log keeps five runs, so a single update was enough to push a whole
+    // evening of recording off the end of the history, and these get pasted
+    // into Discord for someone to read.
+    let mut next_tenth = 0;
     update
         .download_and_install(
             |chunk, total| {
                 downloaded += chunk;
-                if let Some(total) = total {
-                    crate::diagnostics::log(format!("update: {downloaded}/{total} bytes"));
+                if let Some(total) = total.filter(|t| *t > 0) {
+                    let tenth = (downloaded * 10 / total as usize).min(10);
+                    if tenth >= next_tenth {
+                        next_tenth = tenth + 1;
+                        crate::diagnostics::log(format!(
+                            "update: {}% ({downloaded}/{total} bytes)",
+                            tenth * 10
+                        ));
+                    }
                 }
             },
             || {

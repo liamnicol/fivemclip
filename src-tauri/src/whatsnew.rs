@@ -20,6 +20,16 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.2.19",
+        lines: &[
+            "Two hotkeys could end up on the same combination, and the second one then did nothing. 0.2.17 moved a saved F9 onto Ctrl+F9 without noticing that Toggle buffer was already there. Anything overlapping is separated on the next start, and the app says what it moved.",
+            "A trim no longer looks hung at the end. Every frame is encoded at 100%, but ffmpeg still has to move the index to the front of the file, which on a long clip is a wait of its own - it says \"Finishing the file…\" instead of sitting on 100%.",
+            "Trimming is written to the log: what was asked for, which encoder was used, how long ffmpeg took, and how long it took to put the result in place. None of it was recorded before, so a trim that stopped part way through left nothing to look at.",
+            "ffmpeg stopping with nothing to say is reported as having been killed, rather than as \"failed without saying why\".",
+            "Installing an update writes about ten lines to the log instead of about 1,450. One download was enough to push an evening of recording out of the history that was meant to survive it.",
+        ],
+    },
+    Release {
         version: "0.2.18",
         lines: &[
             "Trimming shows a progress bar and how long is left. It used to say \"Trimming…\" and go on saying it - for minutes, on a long session - with no way to tell a slow encode from a hung one. The numbers come from ffmpeg itself, so they stay honest when it slows down.",

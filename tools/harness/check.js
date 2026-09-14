@@ -222,6 +222,13 @@ async function aTrimShowsHowFarAlongItIs() {
   const label = await h.page.textContent("#progress-label");
   ok("and says how long is left", label.includes("42%") && label.includes("1m 35s"));
 
+  await h.emit("trim:progress", { fraction: 1.0, eta_seconds: 0 });
+  await h.page.waitForTimeout(100);
+  ok(
+    "at 100% it says it is finishing rather than repeating 100%",
+    (await h.page.textContent("#progress-label")).toLowerCase().includes("finishing")
+  );
+
   await h.emit("trim:progress", { fraction: 0.98, eta_seconds: 1 });
   await h.page.waitForTimeout(100);
   ok("near the end it stops pretending to be precise", (await h.page.textContent("#progress-label")).includes("almost done"));

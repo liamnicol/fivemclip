@@ -445,6 +445,14 @@ function showProgress(fraction, etaSeconds) {
   $("progress").hidden = false;
   const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
   $("progress-fill").style.width = `${pct}%`;
+  // Every frame is encoded at 100%, but ffmpeg is not finished: the index is
+  // moved to the front of the file afterwards, which on a long clip is a wait
+  // of its own. Saying "Trimming… 100%" through all of it is how a working
+  // trim came to look like a hung one.
+  if (pct >= 100) {
+    $("progress-label").textContent = "Finishing the file…";
+    return;
+  }
   const left = remaining(etaSeconds);
   $("progress-label").textContent = left ? `Trimming… ${pct}% · ${left}` : `Trimming… ${pct}%`;
 }
