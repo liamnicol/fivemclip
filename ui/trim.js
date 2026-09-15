@@ -317,6 +317,7 @@ video.addEventListener("timeupdate", () => {
     previewing = false;
   }
   paint();
+  paintFoundBoxes();
 });
 
 video.addEventListener("play", () => ($("play").textContent = "Pause"));
@@ -400,7 +401,10 @@ function paintChatPreview() {
 
 // The picture moves whenever the window does, and a preview that stays where
 // the video used to be is worse than none.
-window.addEventListener("resize", paintChatPreview);
+window.addEventListener("resize", () => {
+  paintChatPreview();
+  paintFoundBoxes();
+});
 
 /** Asked per clip, once it is known: whether it can have its chat hidden
  *  depends on the file, not only on the setting. */
@@ -417,6 +421,9 @@ function askAboutChat(path) {
       $("hide-chat").checked = on;
       $("hide-chat-why").textContent = available ? "" : reason ?? "";
       $("hide-chat-why").hidden = available;
+      // Only worth offering when there is a region to look in and the file is
+      // one of ours; the backend refuses otherwise anyway.
+      $("scan-chat").hidden = !available;
       paint();
       paintChatPreview();
     })
@@ -428,6 +435,115 @@ function askAboutChat(path) {
       $("hide-chat-why").hidden = false;
     });
 }
+
+/* ---------------- what the scan found ---------------- */
+
+/** Lines the scan proposes covering. `keep` is the user's say-so. */
+let found = [];
+
+$("scan-chat").addEventListener("click", async () => {
+  const button = $("scan-chat");
+  const label = button.textContent;
+  button.disabled = true;
+  showProgress(0, null);
+  $("progress-label").textContent = "Reading the chat…";
+  try {
+    const boxes = await invoke("scan_chat", { path: sourcePath, start: 0, end: duration });
+    found = (boxes ?? []).map((b) => ({ ...b, keep: true }));
+    drawFound();
+    if (found.length === 0) {
+      alert("Nothing matching your channels was found in this clip.");
+    }
+  } catch (error) {
+    alert(String(error));
+  } finally {
+    $("progress").hidden = true;
+    button.disabled = false;
+    button.textContent = label;
+    paint();
+  }
+});
+
+listen("chat:scan", (event) => {
+  const { done, total } = event.payload ?? {};
+  if (!total) return;
+  showProgress(done / total, null);
+  $("progress-label").textContent = `Reading the chat… ${Math.round((done / total) * 100)}%`;
+});
+
+function drawFound() {
+  const list = $("found-list");
+  list.innerHTML = "";
+  $("found").hidden = found.length === 0;
+  $("found-count").textContent =
+    found.length === 1 ? "1 line to cover" : `${found.length} lines to cover`;
+
+  for (const [i, box] of found.entries()) {
+    const li = document.createElement("li");
+    li.classList.toggle("dropped", !box.keep);
+
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = box.keep;
+    tick.addEventListener("change", () => {
+      found[i].keep = tick.checked;
+      li.classList.toggle("dropped", !tick.checked);
+      paintFoundBoxes();
+    });
+
+    const when = document.createElement("span");
+    when.className = "when";
+    when.textContent = `${clock(box.from)}–${clock(box.to)}`;
+
+    const said = document.createElement("span");
+    said.className = "said";
+    // What was read there, not a rectangle: approving anonymous boxes is not
+    // approving anything.
+    said.textContent = box.text || "(a line with no text read)";
+    said.title = `${said.textContent} — click to jump here`;
+
+    li.append(tick, when, said);
+    li.addEventListener("click", (event) => {
+      if (event.target === tick) return;
+      previewing = false;
+      video.currentTime = box.from;
+      paint();
+    });
+    list.append(li);
+  }
+  paintFoundBoxes();
+}
+
+/** Draw the kept boxes that are on screen at the playhead. */
+function paintFoundBoxes() {
+  for (const old of document.querySelectorAll(".found-box")) old.remove();
+  const picture = pictureBox();
+  if (!picture || $("timeline").hidden) return;
+  const stage = $("stage").getBoundingClientRect();
+  const now = video.currentTime;
+
+  for (const box of found) {
+    if (!box.keep || now < box.from || now > box.to) continue;
+    const el = document.createElement("div");
+    el.className = "found-box";
+    Object.assign(el.style, {
+      left: `${picture.left - stage.left + box.x * picture.width}px`,
+      top: `${picture.top - stage.top + box.y * picture.height}px`,
+      width: `${box.w * picture.width}px`,
+      height: `${box.h * picture.height}px`,
+    });
+    $("stage").append(el);
+  }
+}
+
+$("found-all").addEventListener("click", () => {
+  found = found.map((b) => ({ ...b, keep: true }));
+  drawFound();
+});
+$("found-none").addEventListener("click", () => {
+  found = found.map((b) => ({ ...b, keep: false }));
+  drawFound();
+});
 
 /* ---------------- saving ---------------- */
 
@@ -493,6 +609,9 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
       fast,
       fitBytes: fitDiscord && channel ? channel.limit_bytes : null,
       hideChat: hidingChat(),
+      // The lines the user left ticked. Sent only when a scan actually found
+      // something, so an untouched clip still gets the whole-region behaviour.
+      blackouts: found.length ? found.filter((b) => b.keep) : null,
     });
     if (thenSend && channel) {
       pressed.textContent = "Sending…";

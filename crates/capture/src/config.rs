@@ -210,6 +210,15 @@ pub struct Settings {
     /// nobody has chosen yet is not a good first impression.
     pub setup_complete: bool,
 
+    /// Channels to look for when scanning a clip's chat, by the word in their
+    /// tag - "Faction", "Admin", "OOC". Matched loosely and only against the
+    /// front of a line; see `chatscan::mentions`.
+    ///
+    /// Words rather than colours, because every faction picks its own colour
+    /// and two faction lines can be green and blue.
+    #[serde(default)]
+    pub chat_rules: Vec<String>,
+
     pub hotkey_save_clip: String,
     pub hotkey_screenshot: String,
     /// Drag-a-rectangle capture, the way Greenshot and ShareX do it.
@@ -292,6 +301,7 @@ impl Default for Settings {
             start_minimized: false,
             autostart: true,
             setup_complete: false,
+            chat_rules: Vec::new(),
             hotkey_save_clip: "Ctrl+F5".into(),
             hotkey_screenshot: "Ctrl+F6".into(),
             hotkey_region: "Ctrl+F7".into(),
@@ -500,6 +510,10 @@ impl Settings {
         self.mic_gain_db = self.mic_gain_db.clamp(-30.0, 30.0);
         self.screenshot_quality = self.screenshot_quality.clamp(2, 31);
         self.trigger_processes.retain(|p| !p.trim().is_empty());
+        for rule in &mut self.chat_rules {
+            *rule = rule.trim().to_string();
+        }
+        self.chat_rules.retain(|r| !r.is_empty());
         // An empty list with the toggle on would mean "record when nothing is
         // running", which is never what anyone meant.
         if self.trigger_processes.is_empty() {

@@ -137,6 +137,39 @@ video {
   white-space: nowrap;
 }
 
+/* ---------- what the scan found ---------- */
+
+.found {
+  flex: none; max-height: 190px; overflow-y: auto;
+  padding: 10px 20px; background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.found-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.found ul { list-style: none; margin: 0; padding: 0; }
+.found li {
+  display: flex; align-items: center; gap: 9px;
+  padding: 4px 0; font-size: 12.5px;
+}
+.found li input { margin: 0; flex: none; }
+.found .when {
+  color: var(--muted); font-variant-numeric: tabular-nums;
+  flex: none; min-width: 84px;
+}
+/* The line that was read, clipped rather than wrapped: forty of these wrapping
+   turns the list into a wall nobody reads. */
+.found .said {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.found li.dropped .said, .found li.dropped .when { opacity: .4; text-decoration: line-through; }
+
+/* Each found line, drawn over the video at the moment it is on screen. */
+.found-box {
+  position: absolute;
+  background: rgba(0, 0, 0, .82);
+  border: 1px dashed rgba(229, 58, 53, .8);
+  pointer-events: none;
+}
+
 /* ---------- timeline ---------- */
 
 .timeline { flex: none; padding: 14px 20px 4px; background: var(--panel); }

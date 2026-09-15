@@ -21,6 +21,7 @@
         <span>Hide chat</span>
       </label>
       <small class="muted" id="hide-chat-why" hidden></small>
+      <button class="btn btn-ghost" id="scan-chat" hidden>Find chat lines</button>
       <select id="discord-target" hidden aria-label="Discord channel"></select>
       <button class="btn" id="discord" hidden>Fit &amp; send</button>
       <button class="btn" id="save-copy">Save a copy</button>
@@ -42,6 +43,19 @@
       <div id="chat-preview" hidden><span>Hidden in the trim</span></div>
       <p class="loading" id="loading">Loading…</p>
     </main>
+
+    <!-- What the scan found, for approving or striking out. Nothing is
+         covered on the strength of a guess: a missed line publishes the thing
+         being hidden, so a person sees the list first. -->
+    <section class="found" id="found" hidden>
+      <div class="found-head">
+        <strong id="found-count"></strong>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" id="found-all">Keep all</button>
+        <button class="btn btn-ghost" id="found-none">Keep none</button>
+      </div>
+      <ul id="found-list"></ul>
+    </section>
 
     <section class="timeline" id="timeline" hidden>
       <div class="track" id="track">

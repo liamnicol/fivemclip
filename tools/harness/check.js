@@ -244,6 +244,49 @@ async function aTrimShowsHowFarAlongItIs() {
   await h.done();
 }
 
+async function theScanShowsWhatItFoundBeforeCoveringAnything() {
+  // Nothing is covered on the strength of a guess. A missed line publishes the
+  // thing being hidden, so the read text is shown and each one can be struck.
+  const h = await open("trim.html", scenario({
+    scan_chat: [
+      { x: 0.02, y: 0.10, w: 0.40, h: 0.03, from: 1.0, to: 4.0, text: "[Faction | Security] Pax: on my way" },
+      { x: 0.02, y: 0.13, w: 0.40, h: 0.03, from: 1.0, to: 4.0, text: "[Faction | Security] Pax: second line" },
+    ],
+  }));
+  await ready(h.page);
+  await h.page.waitForTimeout(200);
+  eq("nothing is listed before scanning", await h.page.evaluate(() => document.getElementById("found").hidden), true);
+
+  await h.page.click("#scan-chat");
+  await h.page.waitForTimeout(500);
+  eq("the list appears", await h.page.evaluate(() => document.getElementById("found").hidden), false);
+  eq("with a row per line", await h.page.evaluate(() => document.querySelectorAll("#found-list li").length), 2);
+  ok("showing what was read, not a rectangle", (await h.page.textContent("#found-list")).includes("on my way"));
+
+  // Boxes are drawn only while the line is actually on screen.
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 2; });
+  await h.page.waitForTimeout(300);
+  eq("both are drawn over the video", await h.page.evaluate(() => document.querySelectorAll(".found-box").length), 2);
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 8; });
+  await h.page.waitForTimeout(300);
+  eq("and gone once the moment has passed", await h.page.evaluate(() => document.querySelectorAll(".found-box").length), 0);
+
+  // Striking one out must actually drop it from what gets encoded.
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 2; });
+  await h.page.waitForTimeout(200);
+  await h.page.click("#found-list li:first-child input");
+  await h.page.waitForTimeout(200);
+  eq("a struck line stops being drawn", await h.page.evaluate(() => document.querySelectorAll(".found-box").length), 1);
+
+  await h.page.click("#set-end");
+  await h.page.click("#save");
+  await h.page.waitForTimeout(400);
+  const sent = (await h.lastCall("trim_clip"))?.args?.blackouts ?? [];
+  eq("and only the kept ones are sent to be encoded", sent.length, 1);
+  ok("the one that was kept", sent[0]?.text?.includes("second line"));
+  await h.done();
+}
+
 async function aFailedTrimLeavesTheWindowUsable() {
   const h = await open("trim.html", scenario({
     trim_clip: () => { throw new Error("ffmpeg said no"); },
@@ -291,7 +334,7 @@ function settings(over = {}) {
     hotkey_region: "Ctrl+F7", hotkey_session: "Ctrl+F8",
     hotkey_toggle_buffer: "Ctrl+F9", hotkey_marker: "Ctrl+F10",
     imgbb_api_key: "", imgbb_auto_upload: false, discord_targets: [],
-    hide_chat: false, chat_region: null, s3: {},
+    hide_chat: false, chat_region: null, chat_rules: ["Faction"], s3: {},
     min_free_gb: 10, auto_prune: false, max_library_gb: 50,
     only_while_fivem_running: false, auto_session: false,
     trigger_processes: [], autostart: false, start_minimized: false,
@@ -349,6 +392,15 @@ async function gameKeyHotkeysAreFlagged() {
   await h.done();
 }
 
+async function theChannelRulesSurviveASave() {
+  // Collected from the page, unlike the region - so a round trip that dropped
+  // them would silently turn the scan off.
+  const h = await open("index.html", settingsScenario({ chat_rules: ["Faction", "Admin"] }));
+  await h.page.waitForTimeout(600);
+  eq("they are shown as typed", await h.page.inputValue("#chat_rules"), "Faction, Admin");
+  await h.done();
+}
+
 async function theDefaultHotkeysAreClean() {
   const h = await open("index.html", settingsScenario());
   await h.page.waitForTimeout(600);
@@ -375,10 +427,12 @@ async function theDefaultHotkeysAreClean() {
     draggingAHandleEnablesSaving,
     aFailedTrimLeavesTheWindowUsable,
     theSourceIsReleasedBeforeItIsReplaced,
+    theScanShowsWhatItFoundBeforeCoveringAnything,
     aTrimShowsHowFarAlongItIs,
     aLongSaveSaysSoRatherThanLookingHung,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
+    theChannelRulesSurviveASave,
   ]) {
     try {
       await test();

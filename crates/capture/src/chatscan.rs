@@ -280,6 +280,7 @@ pub fn scan(
     region: &ChatRegion,
     start: f64,
     end: f64,
+    progress: &(dyn Fn(usize, usize) + Sync),
 ) -> Result<Vec<Line>, String> {
     use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
     use rten::Model;
@@ -299,9 +300,12 @@ pub fn scan(
     std::fs::create_dir_all(&work).map_err(|e| format!("could not make a scratch folder: {e}"))?;
     let shot = work.join("frame.png");
 
+    let total = (((end - start) / SAMPLE_SECONDS).ceil() as usize).max(1);
+    let mut done = 0;
     let mut lines = Vec::new();
     let mut at = start;
     while at < end {
+        progress(done, total);
         frame_at(ffmpeg_path, video, region, at, &shot)?;
         let image = image::open(&shot)
             .map_err(|e| format!("could not read the frame back: {e}"))?
@@ -344,10 +348,32 @@ pub fn scan(
             });
         }
         at += SAMPLE_SECONDS;
+        done += 1;
     }
+    progress(total, total);
 
     let _ = std::fs::remove_dir_all(&work);
     Ok(lines)
+}
+
+/// What was read on each line a rule matched, in the same order `blackouts`
+/// returns them, so the user can see what they are covering.
+pub fn matched_text(lines: &[Line], keywords: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for group in group_by_frame(lines) {
+        let mut hiding = false;
+        let mut current = String::new();
+        for line in group {
+            if line.text.trim_start().starts_with('[') {
+                hiding = keywords.iter().any(|k| mentions(&line.text, k));
+                current = line.text.clone();
+            }
+            if hiding {
+                out.push(current.clone());
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -389,6 +415,7 @@ mod real_footage_tests {
             &region,
             8.5,
             9.5,
+            &|_, _| {},
         )
         .expect("the scan runs");
 

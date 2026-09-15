@@ -95,6 +95,7 @@ fn main() {
             commands::open_trimmer,
             commands::trim_target,
             commands::trim_clip,
+            commands::scan_chat,
             commands::save_edited_image,
             commands::open_output_folder,
             commands::open_log_folder,

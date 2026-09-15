@@ -20,6 +20,15 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.3.0",
+        lines: &[
+            "Hide individual chat lines instead of blacking out the whole corner of the picture. Name the channels you care about in Settings - Faction, Admin, OOC - and the trimmer will find just those lines in a clip and cover each one only while it is on screen.",
+            "It reads the lines rather than going by colour, because colour cannot tell channels apart: every faction picks its own, so two faction lines can be green and blue while an unrelated channel matches either.",
+            "Nothing is covered on a guess. The trimmer lists what it read, draws each box over the video at the moment it appears, and lets you strike out anything it got wrong before you save.",
+            "It takes about a second per half-second of clip and shows how far along it is. A line that wraps onto a second line is covered too; a /me directly underneath a matched line may be covered as well, which is why the list is there.",
+        ],
+    },
+    Release {
         version: "0.2.20",
         lines: &[
             "The app no longer goes \"Not responding\" while a session is being saved. Closing the game stops the recording and stitches it together, which on a long session takes a minute - and the window froze for all of it. It was never a crash; the status check ran on the same thread and waited for the save to finish.",

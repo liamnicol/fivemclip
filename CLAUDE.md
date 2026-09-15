@@ -418,6 +418,13 @@ Nothing secret goes in the log: these get pasted into Discord.
 
 Devtools are enabled in release builds. Right-click any window, Inspect.
 
+## The OCR models
+
+`tools/fetch-ocr-models.ps1` must run before a build that bundles them, the
+same as ffmpeg - they are gitignored, and `tauri.conf.json` lists them as
+resources, so the bundle step fails without them. `chatscan::Models::beside_exe`
+finds them at runtime the way `find_ffmpeg` does.
+
 ## Releasing
 
 Bump the version in **both** `Cargo.toml` and `src-tauri/tauri.conf.json` -
