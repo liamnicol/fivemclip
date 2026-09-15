@@ -615,13 +615,19 @@ async function save(replace, fast = false, fitDiscord = false, thenSend = false)
     });
     if (thenSend && channel) {
       pressed.textContent = "Sending…";
+      $("progress-label").textContent = "Sending…";
       await invoke("send_to_discord", {
         path: saved,
         target: Number($("discord-target").value) || 0,
         message: "",
       });
     }
-    getCurrentWindow().close();
+
+    // Say it finished before going anywhere. The window closing *is* the
+    // success signal, so anything that stops it closing leaves the bar sitting
+    // on "Finishing the file…" over a clip that is already saved and already
+    // showing in the library - which reads as a trim that never ended.
+    done(saved);
   } catch (error) {
     alert(String(error));
     $("progress").hidden = true;
@@ -652,6 +658,35 @@ $("fast").addEventListener("click", () => save(true, true));
 // A copy, not a replace: the whole point is a smaller version for Discord, and
 // overwriting the good one with a squeezed one is not what anybody meant.
 $("discord").addEventListener("click", () => save(false, false, true, true));
+
+/** The trim worked. Say so, then get out of the way.
+ *
+ *  The pause is not decoration: closing instantly on a fast trim means the only
+ *  feedback is a window vanishing, which is indistinguishable from it having
+ *  crashed. And if the close does not take, the window is left saying the true
+ *  thing rather than the stale one.
+ */
+function done(savedPath) {
+  showProgress(1, null);
+  const name = String(savedPath).replace(/^.*[\\/]/, "");
+  $("progress-label").textContent = `Saved ${name}`;
+  $("progress-fill").style.background = "#6fdc8c";
+
+  setTimeout(() => {
+    try {
+      getCurrentWindow().close();
+    } catch {
+      /* nothing left to do but leave "Saved" on screen */
+    }
+    // Still here a moment later means the close did not take. Hand the window
+    // back rather than leaving it looking mid-job for ever.
+    setTimeout(() => {
+      $("progress-label").textContent = `Saved ${name} — you can close this window.`;
+      for (const b of document.querySelectorAll(".bar .btn")) b.disabled = false;
+      paint();
+    }, 1500);
+  }, 900);
+}
 
 /* ---------------- boot ---------------- */
 

@@ -149,6 +149,15 @@ with the chat painted out, which is the commonest reason to open the trimmer at
 all. Fast stays refused there, because a stream copy of the whole file really is
 a copy.
 
+**A window closing is not a success message.** The trimmer's only sign that a
+trim had worked was the window disappearing, so anything that stopped it
+closing left the bar reading "Finishing the file…" over a clip that was already
+written and already listed in the Library. `done()` shows "Saved <name>" first,
+then closes, and if the close does not take it says the window can be closed by
+hand. The log gained a matching "trim finished" line as the last thing the
+command does, so a log that stops at "moved into place" says the answer never
+got back to the window - a different fault from the trim failing.
+
 **A long encode must say how far along it is.** `trim()` blocked on `.output()`
 and the button just said "Trimming…", which on a multi-minute re-encode is
 indistinguishable from a hang. `trim_with_progress` spawns instead, asks ffmpeg

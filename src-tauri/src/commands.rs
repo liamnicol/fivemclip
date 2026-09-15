@@ -1247,6 +1247,10 @@ pub async fn trim_clip(
     // stored link no longer describes it.
     app.state::<AppState>().links.forget(&saved);
     library_changed(&app);
+    // The last thing the command does. A log that stops after "moved into
+    // place" and never reaches here means the answer never got back to the
+    // window, which is a different fault from the trim itself failing.
+    crate::diagnostics::log(format!("trim finished: {}", saved.display()));
     Ok(saved.to_string_lossy().into_owned())
 }
 

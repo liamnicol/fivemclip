@@ -287,6 +287,36 @@ async function theScanShowsWhatItFoundBeforeCoveringAnything() {
   await h.done();
 }
 
+async function aFinishedTrimSaysSoBeforeItCloses() {
+  // The window closing was the only success signal, so anything that stopped
+  // it closing left the bar on "Finishing the file…" over a clip that was
+  // already saved and already in the library.
+  const h = await open("trim.html", scenario({
+    trim_clip: "C:\\FiveMClip\\Clips\\Clip_2026_trimmed.mp4",
+    chat_hiding: { available: false, on: false, region: null, reason: "" },
+  }));
+  await ready(h.page);
+  await h.page.evaluate(() => { document.getElementById("video").currentTime = 12; });
+  await h.page.waitForTimeout(200);
+  await h.page.click("#set-end");
+  await h.page.click("#save");
+
+  // Before the close, not after: the point is that it is visible.
+  await h.page.waitForFunction(
+    () => /saved/i.test(document.getElementById("progress-label").textContent),
+    null,
+    { timeout: 4000 }
+  ).catch(() => {});
+  const label = await h.page.textContent("#progress-label");
+  ok("it says it saved", /saved/i.test(label));
+  ok("and names the file", label.includes("Clip_2026_trimmed.mp4"));
+  eq("the bar is full", await h.page.evaluate(() => document.getElementById("progress-fill").style.width), "100%");
+
+  await h.page.waitForTimeout(1200);
+  eq("then it closes", await h.closed() > 0, true);
+  await h.done();
+}
+
 async function aFailedTrimLeavesTheWindowUsable() {
   const h = await open("trim.html", scenario({
     trim_clip: () => { throw new Error("ffmpeg said no"); },
@@ -429,6 +459,7 @@ async function theDefaultHotkeysAreClean() {
     theSourceIsReleasedBeforeItIsReplaced,
     theScanShowsWhatItFoundBeforeCoveringAnything,
     aTrimShowsHowFarAlongItIs,
+    aFinishedTrimSaysSoBeforeItCloses,
     aLongSaveSaysSoRatherThanLookingHung,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
