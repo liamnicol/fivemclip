@@ -298,14 +298,51 @@ function escapeHtml(value) {
 
 /* ---------------- library ---------------- */
 
-document.querySelectorAll(".chip").forEach((chip) => {
+document.querySelectorAll(".chip[data-filter]").forEach((chip) => {
   chip.addEventListener("click", () => {
-    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
+    document
+      .querySelectorAll(".chip[data-filter]")
+      .forEach((c) => c.classList.remove("is-active"));
     chip.classList.add("is-active");
     libraryFilter = chip.dataset.filter;
     renderLibrary();
   });
 });
+
+/* ---------------- settings sections ---------------- */
+
+/** Settings had grown to nine fieldsets and seventy-nine controls in one
+ *  unbroken scroll. The sections are hidden rather than removed, so
+ *  `collectSettings` still reads every field by id whichever one is showing -
+ *  a save from the Hotkeys section must not blank out the S3 keys. */
+function showSettingsGroup(slug) {
+  for (const group of document.querySelectorAll(".group[data-group]")) {
+    group.hidden = group.dataset.group !== slug;
+  }
+  for (const chip of document.querySelectorAll(".subnav .chip")) {
+    chip.classList.toggle("is-active", chip.dataset.group === slug);
+  }
+  try {
+    localStorage.setItem("settings-group", slug);
+  } catch {
+    /* a remembered tab is a convenience, not a requirement */
+  }
+}
+
+document.querySelectorAll(".subnav .chip").forEach((chip) => {
+  chip.addEventListener("click", () => showSettingsGroup(chip.dataset.group));
+});
+
+// Back where you left off, because changing one setting and checking its effect
+// is a round trip you make several times.
+try {
+  const last = localStorage.getItem("settings-group");
+  if (last && document.querySelector(`.group[data-group="${last}"]`)) {
+    showSettingsGroup(last);
+  }
+} catch {
+  /* first section it is */
+}
 
 $("btn-refresh").addEventListener("click", refreshLibrary);
 

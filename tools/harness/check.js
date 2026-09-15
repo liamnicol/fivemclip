@@ -422,6 +422,76 @@ async function gameKeyHotkeysAreFlagged() {
   await h.done();
 }
 
+async function everyElementMainJsReachesForExists() {
+  // Regrouping the settings markup dropped three fields on the floor - the
+  // version note, the Saved badge and the whole chat-rules input - and the
+  // first sign was a null dereference deep in collectSettings. Ask the page
+  // directly instead: every id the script looks up has to be in the document.
+  const h = await open("index.html", settingsScenario());
+  await h.page.waitForTimeout(600);
+
+  const source = await h.page.evaluate(async () => {
+    const res = await fetch("main.js");
+    return res.text();
+  });
+  const wanted = new Set();
+  for (const m of source.matchAll(/\$\("([\w-]+)"\)/g)) wanted.add(m[1]);
+  for (const m of source.matchAll(/getElementById\("([\w-]+)"\)/g)) wanted.add(m[1]);
+
+  const missing = await h.page.evaluate(
+    (ids) => ids.filter((id) => !document.getElementById(id)),
+    [...wanted]
+  );
+  eq(`all ${wanted.size} ids main.js uses are in the page`, missing.join(", "), "");
+  await h.done();
+}
+
+async function settingsAreBrokenIntoSections() {
+  const h = await open("index.html", settingsScenario());
+  await h.page.waitForTimeout(600);
+  await h.page.click('.tab[data-view="settings"]');
+  await h.page.waitForTimeout(200);
+
+  eq("one section shows at a time", await h.page.evaluate(() =>
+    [...document.querySelectorAll(".group[data-group]")].filter((g) => !g.hidden).length), 1);
+  eq("and it is a handful of controls, not eighty", await h.page.evaluate(() =>
+    [...document.querySelectorAll(".group[data-group]")]
+      .find((g) => !g.hidden)
+      .querySelectorAll("input, select, button").length) <= 30, true);
+
+  await h.page.click('.subnav .chip[data-group="app"]');
+  await h.page.waitForTimeout(150);
+  eq("switching shows the one asked for", await h.page.evaluate(() =>
+    document.querySelector(".group[data-group='app']").hidden), false);
+  eq("and hides the rest", await h.page.evaluate(() =>
+    document.querySelector(".group[data-group='recording']").hidden), true);
+
+  // The one that would quietly destroy data: fields in a hidden section must
+  // still be collected, or saving from Hotkeys blanks the S3 keys.
+  const collected = await h.page.evaluate(() => collectSettings());
+  ok("a hidden section is still collected", collected.hotkey_save_clip === "Ctrl+F5");
+  ok("including its text fields", typeof collected.output_dir === "string" && collected.output_dir.length > 0);
+  await h.done();
+}
+
+async function theSectionsFitTheSmallestWindow() {
+  const h = await open("index.html", settingsScenario());
+  await h.page.setViewportSize({ width: 860, height: 580 });
+  await h.page.waitForTimeout(600);
+  await h.page.click('.tab[data-view="settings"]');
+  await h.page.waitForTimeout(200);
+
+  // A switcher that runs off the edge hides sections nobody then knows exist.
+  eq("every section is reachable at 860px", await h.page.evaluate(() =>
+    [...document.querySelectorAll(".subnav .chip")].every((c) => {
+      const b = c.getBoundingClientRect();
+      return b.left >= 0 && b.right <= window.innerWidth + 1;
+    })), true);
+  eq("and nothing scrolls sideways", await h.page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+  await h.done();
+}
+
 async function theChannelRulesSurviveASave() {
   // Collected from the page, unlike the region - so a round trip that dropped
   // them would silently turn the scan off.
@@ -463,6 +533,9 @@ async function theDefaultHotkeysAreClean() {
     aLongSaveSaysSoRatherThanLookingHung,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
+    everyElementMainJsReachesForExists,
+    settingsAreBrokenIntoSections,
+    theSectionsFitTheSmallestWindow,
     theChannelRulesSurviveASave,
   ]) {
     try {

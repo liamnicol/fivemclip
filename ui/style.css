@@ -369,6 +369,16 @@ main { flex: 1; overflow-y: auto; padding: 24px; }
 
 /* ---------- settings ---------- */
 
+/* Settings' own section switcher. Wraps rather than scrolls: the window can be
+   860px wide and a row of tabs that runs off the edge hides the sections nobody
+   then knows exist. */
+.subnav {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
 fieldset {
   border: 1px solid var(--line); border-radius: var(--radius);
   padding: 18px; margin: 0 0 16px; background: var(--panel);

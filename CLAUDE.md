@@ -334,6 +334,20 @@ and `.setup-card` both use `margin: auto`, and the card is capped at
 maximised.** Anything that only fits a large window does not fit. Check new
 overlays at 860x580 before believing them.
 
+**Settings sections are hidden, never removed.** `collectSettings` reads every
+field by id whichever section is showing, so a save made from Hotkeys must not
+blank the S3 keys - which is what detaching the other sections would do. The
+switcher wraps rather than scrolls, because the window can be 860px wide and a
+tab row running off the edge hides sections nobody then knows exist.
+
+**Moving settings markup drops things silently.** Regrouping the fieldsets lost
+the version note, the Saved badge and a whole input, and the first sign was a
+null dereference deep inside `collectSettings`. Anything outside a `<fieldset>`
+in that form is easy to miss - the version note and the form actions live there.
+`everyElementMainJsReachesForExists` in the harness reads main.js, pulls out
+every id it looks up, and asks the page whether each one exists; all 111 of them
+have to be there.
+
 **The update banner is a sibling of `<main>`, not part of a view.** It lived
 inside `#view-record`, so it was `display: none` from Library and Settings -
 where people spend most of their time. It supplies its own gutter and centring

@@ -22,6 +22,7 @@ pub const RELEASES: &[Release] = &[
     Release {
         version: "0.3.0",
         lines: &[
+            "Settings is broken into sections - Recording, Hotkeys, Clips & chat, Sharing, App - instead of one scroll of nine panels and seventy-nine controls. It opens on the section you used last.",
             "A finished trim says so. The window closing was the only sign it had worked, so anything that stopped it closing left the progress bar on \"Finishing the file…\" over a clip that was already saved and already showing in the library. It now shows \"Saved\" with the file name first, and if the window does not close it says you can close it.",
             "Hide individual chat lines instead of blacking out the whole corner of the picture. Name the channels you care about in Settings - Faction, Admin, OOC - and the trimmer will find just those lines in a clip and cover each one only while it is on screen.",
             "It reads the lines rather than going by colour, because colour cannot tell channels apart: every faction picks its own, so two faction lines can be green and blue while an unrelated channel matches either.",

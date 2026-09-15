@@ -129,6 +129,15 @@
 
       <section class="view" id="view-settings">
         <form id="settings-form">
+          <nav class="subnav" aria-label="Settings sections">
+            <button type="button" class="chip is-active" data-group="recording">Recording</button>
+            <button type="button" class="chip" data-group="hotkeys">Hotkeys</button>
+            <button type="button" class="chip" data-group="chat">Clips &amp; chat</button>
+            <button type="button" class="chip" data-group="sharing">Sharing</button>
+            <button type="button" class="chip" data-group="app">App</button>
+          </nav>
+
+          <div class="group" data-group="recording">
           <fieldset>
             <legend>Recording</legend>
 
@@ -188,7 +197,6 @@
               <span>Include the mouse cursor</span>
             </label>
           </fieldset>
-
           <fieldset>
             <legend>Audio</legend>
             <label class="field">
@@ -213,7 +221,9 @@
               </span>
             </label>
           </fieldset>
+          </div>
 
+          <div class="group" data-group="hotkeys" hidden>
           <fieldset>
             <legend>Hotkeys</legend>
             <label class="field">
@@ -248,7 +258,43 @@
             </label>
             <small class="muted">Click a box, then press the keys you want.</small>
           </fieldset>
+          </div>
 
+          <div class="group" data-group="chat" hidden>
+          <fieldset>
+            <legend>Hiding the chat</legend>
+            <label class="checkbox">
+              <input type="checkbox" id="hide_chat" />
+              <span>Black out the chat box in trimmed clips</span>
+            </label>
+            <div class="field">
+              <button type="button" class="btn btn-ghost" id="pick-chat-region">
+                Set the chat region
+              </button>
+              <small class="muted" id="chat-region-state"></small>
+              <small class="muted">
+                Freezes the screen so you can drag over the chat box while it has
+                something in it. Filled solid rather than blurred: a blur over
+                moving footage can be averaged back out across frames, and
+                servers that ban showing staff chat mean the text being gone.
+                Needs a re-encode, so it cannot be combined with a fast trim.
+              </small>
+            </div>
+            <label class="field">
+              <span>Channels to look for</span>
+              <input type="text" id="chat_rules" placeholder="Faction, Admin, OOC" />
+              <small class="muted">
+                Words from the tag at the start of a chat line, separated by
+                commas. The trimmer can then find just those lines in a clip and
+                cover them, instead of blacking out the whole corner. Matched on
+                the word, not the colour &mdash; every faction picks its own
+                colour, so colour cannot tell them apart.
+              </small>
+            </label>
+          </fieldset>
+          </div>
+
+          <div class="group" data-group="sharing" hidden>
           <fieldset>
             <legend>Screenshots &amp; sharing</legend>
             <label class="checkbox">
@@ -290,36 +336,6 @@
               </small>
             </div>
           </fieldset>
-
-          <fieldset>
-            <legend>Updates</legend>
-            <div class="field">
-              <button type="button" class="btn btn-ghost" id="check-updates">Check for updates</button>
-              <small class="muted" id="update-state"></small>
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>Hiding the chat</legend>
-            <label class="checkbox">
-              <input type="checkbox" id="hide_chat" />
-              <span>Black out the chat box in trimmed clips</span>
-            </label>
-            <div class="field">
-              <button type="button" class="btn btn-ghost" id="pick-chat-region">
-                Set the chat region
-              </button>
-              <small class="muted" id="chat-region-state"></small>
-              <small class="muted">
-                Freezes the screen so you can drag over the chat box while it has
-                something in it. Filled solid rather than blurred: a blur over
-                moving footage can be averaged back out across frames, and
-                servers that ban showing staff chat mean the text being gone.
-                Needs a re-encode, so it cannot be combined with a fast trim.
-              </small>
-            </div>
-          </fieldset>
-
           <fieldset>
             <legend>Your own cloud storage</legend>
             <small class="muted">
@@ -371,37 +387,9 @@
               <input type="text" id="s3_prefix" placeholder="FiveMClip" autocomplete="off" />
             </label>
           </fieldset>
+          </div>
 
-          <fieldset>
-            <legend>Disk space</legend>
-            <label class="field">
-              <span>Stop recording when free space drops below</span>
-              <span class="row">
-                <input type="range" id="min_free_gb" min="2" max="200" step="1" />
-                <output id="min_free_out"></output>
-              </span>
-              <small class="muted">
-                A replay buffer writes constantly. Without a floor it will fill
-                the drive.
-              </small>
-            </label>
-            <label class="checkbox">
-              <input type="checkbox" id="auto_prune" />
-              <span>Delete my oldest clips when the library gets too big</span>
-            </label>
-            <label class="field" id="prune-cap-field">
-              <span>Keep at most</span>
-              <span class="row">
-                <input type="range" id="max_library_gb" min="1" max="500" step="1" />
-                <output id="max_library_out"></output>
-              </span>
-              <small class="muted">
-                Oldest first, and only clips and screenshots you have saved.
-                Deleted files do not go to the Recycle Bin.
-              </small>
-            </label>
-          </fieldset>
-
+          <div class="group" data-group="app" hidden>
           <fieldset>
             <legend>Behaviour</legend>
             <label class="checkbox">
@@ -457,6 +445,44 @@
               </span>
             </label>
           </fieldset>
+          <fieldset>
+            <legend>Disk space</legend>
+            <label class="field">
+              <span>Stop recording when free space drops below</span>
+              <span class="row">
+                <input type="range" id="min_free_gb" min="2" max="200" step="1" />
+                <output id="min_free_out"></output>
+              </span>
+              <small class="muted">
+                A replay buffer writes constantly. Without a floor it will fill
+                the drive.
+              </small>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="auto_prune" />
+              <span>Delete my oldest clips when the library gets too big</span>
+            </label>
+            <label class="field" id="prune-cap-field">
+              <span>Keep at most</span>
+              <span class="row">
+                <input type="range" id="max_library_gb" min="1" max="500" step="1" />
+                <output id="max_library_out"></output>
+              </span>
+              <small class="muted">
+                Oldest first, and only clips and screenshots you have saved.
+                Deleted files do not go to the Recycle Bin.
+              </small>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Updates</legend>
+            <div class="field">
+              <button type="button" class="btn btn-ghost" id="check-updates">Check for updates</button>
+              <small class="muted" id="update-state"></small>
+            </div>
+          </fieldset>
+          </div>
+
 
           <p class="muted version-note">
             FiveMClip <span id="app-version">—</span> ·
@@ -465,17 +491,6 @@
               >github.com/liamnicol/fivemclip</a
             >
           </p>
-            <label class="field">
-              <span>Channels to look for</span>
-              <input type="text" id="chat_rules" placeholder="Faction, Admin, OOC" />
-              <small class="muted">
-                Words from the tag at the start of a chat line, separated by
-                commas. The trimmer can then find just those lines in a clip and
-                cover them, instead of blacking out the whole corner. Matched on
-                the word, not the colour &mdash; every faction picks its own
-                colour, so colour cannot tell them apart.
-              </small>
-            </label>
 
           <div class="form-actions">
             <span class="muted">Changes apply as you make them.</span>
