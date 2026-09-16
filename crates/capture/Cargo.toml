@@ -12,10 +12,6 @@ log = "0.4"
 parking_lot = "0.12"
 sysinfo = "0.33"
 chrono = "0.4"
-ocrs = "0.13"
-rten = "0.26"
-rten-imageproc = "0.26"
-image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.24"

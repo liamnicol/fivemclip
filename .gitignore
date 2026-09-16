@@ -6,6 +6,3 @@ src-tauri/bin/*.exe
 
 # Fixtures dropped into ui/ to drive the front end in a browser.
 ui/__test-*
-
-# Fetched by tools/fetch-ocr-models.ps1, like ffmpeg.
-src-tauri/models/*.rten

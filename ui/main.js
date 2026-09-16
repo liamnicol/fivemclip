@@ -952,7 +952,6 @@ function applySettings(next) {
   $("imgbb_auto_upload").checked = next.imgbb_auto_upload;
   renderDiscordChannels(next.discord_targets ?? []);
   $("hide_chat").checked = next.hide_chat;
-  $("chat_rules").value = (next.chat_rules ?? []).join(", ");
   for (const [id, value] of Object.entries(next.s3 ?? {})) {
     const field = document.getElementById(`s3_${id}`);
     if (field) field.value = value;
@@ -1064,10 +1063,6 @@ function collectSettings() {
     imgbb_api_key: $("imgbb_api_key").value,
     imgbb_auto_upload: $("imgbb_auto_upload").checked,
     hide_chat: $("hide_chat").checked,
-    chat_rules: $("chat_rules")
-      .value.split(",")
-      .map((r) => r.trim())
-      .filter(Boolean),
     s3: {
       endpoint: $("s3_endpoint").value.trim(),
       bucket: $("s3_bucket").value.trim(),

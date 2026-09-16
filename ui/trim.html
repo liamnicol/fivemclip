@@ -21,7 +21,7 @@
         <span>Hide chat</span>
       </label>
       <small class="muted" id="hide-chat-why" hidden></small>
-      <button class="btn btn-ghost" id="scan-chat" hidden>Find chat lines</button>
+      <button class="btn btn-ghost" id="cover-mark" hidden>Cover from here</button>
       <select id="discord-target" hidden aria-label="Discord channel"></select>
       <button class="btn" id="discord" hidden>Fit &amp; send</button>
       <button class="btn" id="save-copy">Save a copy</button>
@@ -44,15 +44,14 @@
       <p class="loading" id="loading">Loading…</p>
     </main>
 
-    <!-- What the scan found, for approving or striking out. Nothing is
-         covered on the strength of a guess: a missed line publishes the thing
-         being hidden, so a person sees the list first. -->
+    <!-- The stretches of the clip to cover the chat box for. Empty means the
+         whole clip, which is the old behaviour and still the default - these
+         exist so a clip is not obliged to carry a black corner throughout. -->
     <section class="found" id="found" hidden>
       <div class="found-head">
         <strong id="found-count"></strong>
         <span class="spacer"></span>
-        <button class="btn btn-ghost" id="found-all">Keep all</button>
-        <button class="btn btn-ghost" id="found-none">Keep none</button>
+        <button class="btn btn-ghost" id="found-none">Cover the whole clip instead</button>
       </div>
       <ul id="found-list"></ul>
     </section>

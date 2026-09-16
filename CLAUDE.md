@@ -184,24 +184,14 @@ expressed in the same shape rather than a branch. **The times are relative to
 the trimmed output, not the source** - `-ss` has already moved the origin by the
 time the filter sees a timestamp.
 
-**The chat scanner is checked against real footage, not invented footage.**
-`chatscan::real_footage_tests` runs the whole thing on a recording and skips
-without `FIVEMCLIP_TEST_CHAT_CLIP` and `FIVEMCLIP_TEST_MODELS`. It has earned
-this twice: a synthetic clip led to modelling the chat as a dark backing panel
-it does not have, and then to colour-keying the channels, which cannot work.
-It caught two more on first run - a `[Faction System]` tag over a bright window
-reads as `ofP?ction System`, two characters wrong in seven, which the original
-match tolerance missed; and an untagged `/me` line under a matched one inherits
-its channel and gets covered. Both are pinned as tests now, the second as a
-known limitation.
-
-**Match tags loosely and only at the front of the line.** OCR of game text is
-reliably wrong by a character or two - `fPaction`, `ADVERTlSING`, `RADlO`,
-`IRADIO]` - so exact matching misses the lines that matter while looking like
-it works. `mentions` allows one wrong character per three and searches only the
-first three words, because "my faction is recruiting" said in ordinary chat is
-not faction chat and blacking out that sentence would be both wrong and
-baffling. The brackets are no help: OCR loses them.
+**Reading the chat to find what to hide was tried and pulled out.** Colour
+cannot tell channels apart - every faction picks its own - so it needs the text,
+and OCR reads a still frame well enough to look promising and a whole clip badly
+enough to be useless. The mistake worth not repeating is the one that let it get
+as far as a release: it was called proven on two frames of one clip, which
+validated the reader and not the feature. For a redactor the bar is brutal -
+99% per line still leaks on a clip with forty lines - so "usually right" is
+worth nothing here. The blackout is marked by hand in the trimmer instead.
 
 **Chat channels cannot be told apart by colour.** It was the obvious approach
 and it is wrong: each faction picks its own colour, so two faction lines can be
@@ -440,13 +430,6 @@ capture was configured to do - encoder, monitor, fps, bitrate. A crash with no
 Nothing secret goes in the log: these get pasted into Discord.
 
 Devtools are enabled in release builds. Right-click any window, Inspect.
-
-## The OCR models
-
-`tools/fetch-ocr-models.ps1` must run before a build that bundles them, the
-same as ffmpeg - they are gitignored, and `tauri.conf.json` lists them as
-resources, so the bundle step fails without them. `chatscan::Models::beside_exe`
-finds them at runtime the way `find_ffmpeg` does.
 
 ## Releasing
 

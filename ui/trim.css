@@ -137,7 +137,7 @@ video {
   white-space: nowrap;
 }
 
-/* ---------- what the scan found ---------- */
+/* ---------- the stretches to cover ---------- */
 
 .found {
   flex: none; max-height: 190px; overflow-y: auto;
@@ -155,14 +155,11 @@ video {
   color: var(--muted); font-variant-numeric: tabular-nums;
   flex: none; min-width: 84px;
 }
-/* The line that was read, clipped rather than wrapped: forty of these wrapping
-   turns the list into a wall nobody reads. */
-.found .said {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.found li.dropped .said, .found li.dropped .when { opacity: .4; text-decoration: line-through; }
+.found .said { flex: 1; color: var(--muted); }
+.found li .btn { padding: 2px 10px; font-size: 12px; }
 
-/* Each found line, drawn over the video at the moment it is on screen. */
+/* The chat region, drawn over the video while the playhead is inside a
+   stretch that covers it. */
 .found-box {
   position: absolute;
   background: rgba(0, 0, 0, .82);

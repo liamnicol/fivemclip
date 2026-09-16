@@ -4,7 +4,6 @@
 //! against `x86_64-pc-windows-gnu` without dragging in the whole Tauri app.
 
 pub mod audio;
-pub mod chatscan;
 pub mod config;
 pub mod ffmpeg;
 pub mod reaper;

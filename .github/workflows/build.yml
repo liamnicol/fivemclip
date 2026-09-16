@@ -71,12 +71,6 @@ jobs:
         shell: pwsh
         run: ./tools/fetch-ffmpeg.ps1
 
-      # Reading the chat needs weights. Fetched rather than committed, same as
-      # ffmpeg, and required by tauri-build - nothing compiles without them.
-      - name: Fetch the OCR models
-        shell: pwsh
-        run: ./tools/fetch-ocr-models.ps1
-
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -108,12 +102,6 @@ jobs:
       - name: Fetch ffmpeg
         shell: pwsh
         run: ./tools/fetch-ffmpeg.ps1
-
-      # Reading the chat needs weights. Fetched rather than committed, same as
-      # ffmpeg, and required by tauri-build - nothing compiles without them.
-      - name: Fetch the OCR models
-        shell: pwsh
-        run: ./tools/fetch-ocr-models.ps1
 
       - uses: cargo-bins/cargo-binstall@main
 

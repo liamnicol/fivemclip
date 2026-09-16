@@ -41,9 +41,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "bin/ffmpeg.exe": "bin/ffmpeg.exe",
-      "models/text-detection.rten": "models/text-detection.rten",
-      "models/text-recognition.rten": "models/text-recognition.rten"
+      "bin/ffmpeg.exe": "bin/ffmpeg.exe"
     },
     "shortDescription": "Local clip recorder for FiveM",
     "longDescription": "Records the last few minutes of FiveM to your own drive, takes screenshots, and shares them without an account.",

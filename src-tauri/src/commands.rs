@@ -1026,108 +1026,18 @@ pub fn trim_target(state: State<AppState>) -> Option<String> {
 /// Async, and the ffmpeg run is moved off the async runtime as well: this is
 /// the one operation in the app that re-encodes, so it is measured in seconds
 /// rather than milliseconds.
-/// One rectangle the scan proposes covering, on its way to the front end.
+/// One rectangle to cover, and when, as the trimmer sends it.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScanBox {
     pub x: f32,
     pub y: f32,
     pub w: f32,
     pub h: f32,
-    /// Seconds from the start of the clip, not of the trim: the trimmer shows
-    /// these against the whole file, and the shift happens when they are
-    /// turned into filters.
+    /// Seconds from the start of the clip, not of the trim: the trimmer works
+    /// against the whole file, and the shift happens when these are turned
+    /// into filters.
     pub from: f64,
     pub to: f64,
-    /// What was read there, so the user can tell what they are about to cover
-    /// rather than approving anonymous rectangles.
-    pub text: String,
-}
-
-/// Look through a clip for chat lines matching the saved rules.
-///
-/// Slow by nature - about a second per sampled frame - so it reports progress
-/// and runs off the main thread like every other long job.
-#[tauri::command]
-pub async fn scan_chat(
-    app: AppHandle,
-    path: String,
-    start: f64,
-    end: f64,
-) -> Result<Vec<ScanBox>, String> {
-    let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = handle.state::<AppState>();
-        let settings = state.settings.lock().clone();
-        let ffmpeg = state.ffmpeg()?.clone();
-        let source = PathBuf::from(&path);
-
-        if !library::is_managed(&settings, &source) {
-            return Err("That file is not in the FiveMClip folders.".into());
-        }
-        let region = settings
-            .chat_region
-            .ok_or("No chat region is set. Settings > Hiding the chat.")?;
-        if settings.chat_rules.is_empty() {
-            return Err("No channels to look for. Add one in Settings > Hiding the chat.".into());
-        }
-        let models = fivemclip_capture::chatscan::Models::beside_exe()
-            .ok_or("The text models are missing. Reinstall FiveMClip.")?;
-
-        let scanning = std::time::Instant::now();
-        crate::diagnostics::log(format!(
-            "scanning {} for chat between {start:.1}s and {end:.1}s, looking for {:?}",
-            source.display(),
-            settings.chat_rules,
-        ));
-
-        let lines = state.while_busy("Reading the chat…", || {
-            fivemclip_capture::chatscan::scan(
-                &ffmpeg,
-                &models,
-                &source,
-                &region,
-                start,
-                end,
-                &|done, total| {
-                    let _ = handle.emit("chat:scan", ScanProgress { done, total });
-                },
-            )
-        })?;
-
-        // Not shifted by the trim start here: the trimmer shows these against
-        // the whole file and does the shift when it asks for the encode.
-        let boxes = fivemclip_capture::chatscan::blackouts(&lines, &settings.chat_rules, 0.0);
-        let texts = fivemclip_capture::chatscan::matched_text(&lines, &settings.chat_rules);
-        crate::diagnostics::log(format!(
-            "chat scan: {} line(s) read, {} to cover, in {:?}",
-            lines.len(),
-            boxes.len(),
-            scanning.elapsed(),
-        ));
-
-        Ok(boxes
-            .into_iter()
-            .enumerate()
-            .map(|(i, b)| ScanBox {
-                x: b.region.x,
-                y: b.region.y,
-                w: b.region.w,
-                h: b.region.h,
-                from: b.from,
-                to: b.to,
-                text: texts.get(i).cloned().unwrap_or_default(),
-            })
-            .collect())
-    })
-    .await
-    .map_err(|e| format!("the scan was interrupted: {e}"))?
-}
-
-/// How far the scan has got.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
-pub struct ScanProgress {
-    pub done: usize,
-    pub total: usize,
 }
 
 /// How far a trim has got, for the trimmer's progress bar.
@@ -1159,9 +1069,9 @@ pub async fn trim_clip(
     // region itself is read from settings rather than passed in, so a stale
     // front end cannot ask for a rectangle over the middle of the picture.
     hide_chat: bool,
-    // blackouts: specific lines the user approved after a scan. When present
-    // these win, because covering the four lines that matter is the whole
-    // point of having looked.
+    // blackouts: the stretches the user marked in the trimmer. When present
+    // these win over hide_chat, because marking them is a deliberate "only
+    // these bits" and the whole-clip box would make that pointless.
     blackouts: Option<Vec<ScanBox>>,
 ) -> Result<String, String> {
     let handle = app.clone();
