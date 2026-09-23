@@ -40,7 +40,7 @@ async function load() {
     const { path, purpose: kind } = await invoke("region_frame");
     purpose = kind ?? "capture";
     document.body.classList.toggle("is-chat", purpose === "chat");
-    document.getElementById("hint").hidden = purpose !== "chat";
+    document.getElementById("chat-hint").hidden = purpose !== "chat";
     // Cache-busted: every capture overwrites the same file, so without this the
     // overlay shows the screen as it was the last time it opened.
     frame.src = `${convertFileSrc(path)}?v=${Date.now()}`;

@@ -233,6 +233,15 @@ missing" - the one before it deleted the frame on its way out. The tell in the
 log is "reusing the region overlay" with no "freezing the screen" span in front
 of it.
 
+**Two elements with the same id is a rendering bug, not untidiness.** The
+region overlay carried two `#hint` divs, so one element collected both rules:
+`top: 24px` from one and `bottom: 40px` from the other stretched it the full
+height of the screen, `white-space: nowrap` held it to the width of its text,
+and `border-radius: 999px` rounded the ends - a tall dark pill down the middle
+of every region capture, and of anything recorded while one was open. It also
+quietly breaks `getElementById`, which only ever returns the first.
+`noPageHasTwoElementsWithTheSameId` in the harness checks all four pages.
+
 **A hidden WebView2 window does not run its page.** Building the region overlay
 with `.visible(false)` and showing it once the page reported having painted
 looked like the clean way to kill the white flash. It cannot work: the page

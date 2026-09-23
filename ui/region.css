@@ -90,8 +90,16 @@ kbd {
 }
 
 /* Shown only when the overlay is being used to point at the chat box rather
-   than to crop a screenshot, where dragging needs no explanation. */
-#hint {
+   than to crop a screenshot, where dragging needs no explanation.
+
+   Its own id, and that matters. It used to be `#hint`, which the ordinary
+   "Drag to select" hint also carried - so that element picked up both rules at
+   once: `bottom: 40px` from one and `top: 24px` from the other stretched it
+   from the top of the screen to the bottom, `white-space: nowrap` held it to
+   the width of its text, and `border-radius: 999px` rounded the ends. The
+   result was a tall dark pill down the middle of every region capture, and of
+   every recording taken while one was open. */
+#chat-hint {
   position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
   z-index: 10; padding: 10px 16px; border-radius: 999px;
   background: rgba(12, 14, 18, .92); color: #f4f6fa;
@@ -99,7 +107,7 @@ kbd {
   font: 500 14px/1 system-ui, sans-serif; white-space: nowrap;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
 }
-body.is-selecting #hint { opacity: 0; }
+body.is-selecting #chat-hint { opacity: 0; }
 
 /* Between opening and the frozen frame being decoded. The window is already on
    screen by then - it has to be, because a hidden WebView2 window does not run

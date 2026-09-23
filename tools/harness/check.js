@@ -435,6 +435,28 @@ async function gameKeyHotkeysAreFlagged() {
   await h.done();
 }
 
+async function noPageHasTwoElementsWithTheSameId() {
+  // A duplicate id is not a tidiness problem. The region overlay had two
+  // #hint elements, so one of them collected both rules: `top` from one and
+  // `bottom` from the other stretched it the full height of the screen, and
+  // `border-radius: 999px` made it a pill - a tall dark bar down the middle of
+  // every capture, and of anything recorded while one was open. It also breaks
+  // getElementById, which only ever returns the first.
+  for (const page of ["index.html", "trim.html", "region.html", "editor.html"]) {
+    const h = await open(page, settingsScenario());
+    await h.page.waitForTimeout(300);
+    const dupes = await h.page.evaluate(() => {
+      const seen = new Map();
+      for (const el of document.querySelectorAll("[id]")) {
+        seen.set(el.id, (seen.get(el.id) ?? 0) + 1);
+      }
+      return [...seen].filter(([, n]) => n > 1).map(([id, n]) => `${id} x${n}`);
+    });
+    eq(`${page} has no duplicate ids`, dupes.join(", "), "");
+    await h.done();
+  }
+}
+
 async function everyElementMainJsReachesForExists() {
   // Regrouping the settings markup dropped three fields on the floor - the
   // version note, the Saved badge and the whole chat-rules input - and the
@@ -538,6 +560,7 @@ async function theDefaultHotkeysAreClean() {
     aLongSaveSaysSoRatherThanLookingHung,
     gameKeyHotkeysAreFlagged,
     theDefaultHotkeysAreClean,
+    noPageHasTwoElementsWithTheSameId,
     everyElementMainJsReachesForExists,
     settingsAreBrokenIntoSections,
     theSectionsFitTheSmallestWindow,
