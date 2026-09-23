@@ -42,6 +42,98 @@ pub fn next_screenshot_path(s: &Settings) -> Result<PathBuf, String> {
     )))
 }
 
+/// The ffmpeg arguments that lay several monitors onto one canvas.
+///
+/// `inputs` is one input's arguments per monitor, in the same order as
+/// `monitors`, so a test can hand in colour sources where the real thing hands
+/// in ddagrab. Everything else about the graph is identical, which is the point
+/// - the placement arithmetic is what goes wrong, and it is the part that can
+/// be checked without a GPU.
+///
+/// gdigrab would span the desktop in one input and needs none of this, but it
+/// cannot see a fullscreen-exclusive game - which is most of what anyone
+/// screenshots here - so each monitor is grabbed with Desktop Duplication and
+/// composed instead.
+///
+/// `hardware` says whether the frames arrive in GPU memory and need fetching
+/// out before `overlay`, which is a software filter. It is always true in the
+/// app; the tests pass false because `hwupload` needs a device that a machine
+/// with no GPU cannot provide. So the placement arithmetic is checked against a
+/// real ffmpeg and the download step is not - it is one filter, shared with
+/// every software pipeline in `ffmpeg::PIPELINES`, and the offsets are what
+/// actually go wrong.
+pub fn compose_args(
+    monitors: &[crate::sysprobe::MonitorRect],
+    inputs: &[Vec<String>],
+    hardware: bool,
+    out: &std::path::Path,
+) -> Result<Vec<String>, String> {
+    if monitors.is_empty() || monitors.len() != inputs.len() {
+        return Err("Nothing to compose.".into());
+    }
+    let (left, top, width, height) =
+        crate::sysprobe::virtual_bounds(monitors).ok_or("Could not measure the monitors.")?;
+
+    let mut a: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
+    a.extend(["-y".into()]);
+
+    // Input 0 is the canvas the monitors are laid onto. Sized to the whole
+    // virtual desktop, so a gap between two screens stays a gap rather than
+    // sliding the right-hand one leftwards.
+    a.extend([
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!("color=c=black:s={width}x{height}:d=1"),
+    ]);
+    for input in inputs {
+        a.extend(input.iter().cloned());
+    }
+
+    // Each monitor is overlaid at its own offset from the top-left of the
+    // desktop, which is not the origin when a screen sits left of or above the
+    // primary - those coordinates are negative.
+    let mut graph = String::new();
+    let mut last = "0:v".to_string();
+    for (i, m) in monitors.iter().enumerate() {
+        let input = i + 1;
+        let label = format!("m{i}");
+        // Out of hardware memory before it can be overlaid: ddagrab hands back
+        // D3D11 frames and overlay is a software filter. Skipped when the
+        // frames are already in system memory, which is the only way a machine
+        // with no GPU can exercise the rest of this.
+        let fetch = if hardware {
+            "hwdownload,format=bgra"
+        } else {
+            "format=bgra"
+        };
+        graph.push_str(&format!("[{input}:v]{fetch}[{label}];"));
+        let next = if i + 1 == monitors.len() {
+            "out".to_string()
+        } else {
+            format!("s{i}")
+        };
+        graph.push_str(&format!(
+            "[{last}][{label}]overlay=x={}:y={}[{next}];",
+            m.x - left,
+            m.y - top,
+        ));
+        last = next;
+    }
+    graph.pop();
+
+    a.extend([
+        "-filter_complex".into(),
+        graph,
+        "-map".into(),
+        "[out]".into(),
+        "-frames:v".into(),
+        "1".into(),
+        out.to_string_lossy().into_owned(),
+    ]);
+    Ok(a)
+}
+
 pub fn capture(
     ffmpeg_path: &std::path::Path,
     s: &Settings,
@@ -271,5 +363,131 @@ mod tests {
         let asked = grab_settings(&s);
         assert_eq!(asked.monitor_index, 2);
         assert!(asked.capture_cursor);
+    }
+}
+
+#[cfg(test)]
+mod compose_tests {
+    use super::*;
+    use crate::sysprobe::MonitorRect;
+    use std::path::Path;
+
+    fn rect(index: u32, x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
+        MonitorRect {
+            index,
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    /// A solid colour standing in for one monitor's Desktop Duplication output,
+    /// in system memory - see `compose_args` on why the hardware download
+    /// cannot be exercised here.
+    fn colour_input(colour: &str, m: &MonitorRect) -> Vec<String> {
+        vec![
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            format!("color=c={colour}:s={}x{}:d=1", m.width, m.height),
+        ]
+    }
+
+    #[test]
+    fn nothing_to_compose_is_refused_rather_than_guessed_at() {
+        assert!(compose_args(&[], &[], false, Path::new("out.png")).is_err());
+        // One monitor, no input for it.
+        assert!(
+            compose_args(&[rect(0, 0, 0, 100, 100)], &[], false, Path::new("out.png")).is_err()
+        );
+    }
+
+    #[test]
+    fn the_canvas_is_the_whole_desktop_and_offsets_come_off_its_corner() {
+        let monitors = [rect(0, 0, 0, 1920, 1080), rect(1, -2560, -200, 2560, 1440)];
+        let inputs: Vec<Vec<String>> = monitors.iter().map(|m| colour_input("red", m)).collect();
+        let args = compose_args(&monitors, &inputs, false, Path::new("out.png")).unwrap();
+        let joined = args.join(" ");
+
+        assert!(joined.contains("color=c=black:s=4480x1440"), "{joined}");
+        // The primary is 2560 right of the desktop's left edge and 200 down.
+        assert!(joined.contains("overlay=x=2560:y=200"), "{joined}");
+        // The left-hand screen sits at the corner itself.
+        assert!(joined.contains("overlay=x=0:y=0"), "{joined}");
+    }
+
+    /// The whole thing, through a real ffmpeg: two "monitors" of different
+    /// sizes, one of them left of and above the origin, composed onto one
+    /// canvas. Then the corners are read back to see that each landed where it
+    /// was meant to rather than merely that ffmpeg did not complain.
+    #[test]
+    fn composed_monitors_land_where_they_belong() {
+        let Some(ffmpeg) = std::env::var_os("FIVEMCLIP_TEST_FFMPEG").map(std::path::PathBuf::from)
+        else {
+            eprintln!("skipped: set FIVEMCLIP_TEST_FFMPEG");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("fivemclip-compose-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("desktop.png");
+
+        // Left screen is portrait and sits above the primary's top edge.
+        let monitors = [rect(0, 0, 200, 400, 200), rect(1, -300, 0, 300, 600)];
+        let inputs = [
+            colour_input("red", &monitors[0]),
+            colour_input("blue", &monitors[1]),
+        ];
+        let args = compose_args(&monitors, &inputs, false, &out).unwrap();
+        let output = ffmpeg::command(&ffmpeg)
+            .args(&args)
+            .output()
+            .expect("ffmpeg runs");
+        assert!(
+            output.status.success() && out.is_file(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Canvas is 700x600: the blue portrait screen on the left, the red one
+        // 300 across and 200 down, and black where neither reaches.
+        // Near enough, not exact: a colour makes a round trip through the PNG
+        // encoder and comes back a point or two off. What is being checked is
+        // which screen landed where, not the encoder's arithmetic.
+        let is = |got: [u8; 3], want: [u8; 3]| {
+            got.iter()
+                .zip(&want)
+                .all(|(g, w)| (*g as i16 - *w as i16).abs() <= 6)
+        };
+        let at = |x: u32, y: u32| pixel_at(&ffmpeg, &out, x, y);
+        let (left_screen, primary, gap) = (at(150, 300), at(500, 300), at(500, 50));
+        assert!(is(left_screen, [0, 0, 255]), "left screen: {left_screen:?}");
+        assert!(is(primary, [255, 0, 0]), "primary: {primary:?}");
+        assert!(is(gap, [0, 0, 0]), "the gap above the primary: {gap:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn pixel_at(ffmpeg: &Path, file: &Path, x: u32, y: u32) -> [u8; 3] {
+        let out = ffmpeg::command(ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                &file.to_string_lossy(),
+                "-vf",
+                &format!("crop=1:1:{x}:{y}"),
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ])
+            .output()
+            .expect("ffmpeg runs");
+        let p = out.stdout;
+        assert!(p.len() >= 3, "no pixel came back at {x},{y}");
+        [p[0], p[1], p[2]]
     }
 }

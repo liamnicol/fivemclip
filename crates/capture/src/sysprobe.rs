@@ -29,6 +29,40 @@ pub struct MonitorInfo {
     pub primary: bool,
 }
 
+/// Where a monitor sits on the virtual desktop, in physical pixels.
+///
+/// Windows lays monitors out on one coordinate plane with the primary at the
+/// origin, so a screen to the left of it has a negative x. Nothing here assumes
+/// they are in a row, the same size, or even touching - people run a portrait
+/// panel beside a widescreen and leave a gap in the middle, and a capture that
+/// assumes otherwise puts the picture in the wrong place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonitorRect {
+    /// Matches `MonitorInfo::index`, which is what ddagrab's `output_idx` takes.
+    pub index: u32,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The box that contains every monitor: origin and size, in physical pixels.
+///
+/// Returns `None` for an empty list rather than a zero-sized box, because a
+/// canvas of 0x0 is an ffmpeg error forty lines further on.
+pub fn virtual_bounds(monitors: &[MonitorRect]) -> Option<(i32, i32, u32, u32)> {
+    let left = monitors.iter().map(|m| m.x).min()?;
+    let top = monitors.iter().map(|m| m.y).min()?;
+    let right = monitors.iter().map(|m| m.x + m.width as i32).max()?;
+    let bottom = monitors.iter().map(|m| m.y + m.height as i32).max()?;
+    Some((
+        left,
+        top,
+        (right - left).max(1) as u32,
+        (bottom - top).max(1) as u32,
+    ))
+}
+
 #[cfg(windows)]
 struct RawDevice {
     name: String,
@@ -282,5 +316,55 @@ mod tests {
         assert!(!matches_trigger("FiveM.exe", &[]));
         // A blank entry must not become a wildcard.
         assert!(!matches_trigger("anything.exe", &["  ".to_string()]));
+    }
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+
+    fn rect(index: u32, x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
+        MonitorRect {
+            index,
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn one_monitor_is_its_own_bounds() {
+        let b = virtual_bounds(&[rect(0, 0, 0, 1920, 1080)]);
+        assert_eq!(b, Some((0, 0, 1920, 1080)));
+    }
+
+    /// The common case, and the one where a naive "sum the widths" happens to
+    /// be right - which is why it is not the only test here.
+    #[test]
+    fn two_side_by_side() {
+        let b = virtual_bounds(&[rect(0, 0, 0, 1920, 1080), rect(1, 1920, 0, 1920, 1080)]);
+        assert_eq!(b, Some((0, 0, 3840, 1080)));
+    }
+
+    /// A screen to the left of the primary has a negative x. Treating the
+    /// origin as 0,0 would put it off the canvas entirely.
+    #[test]
+    fn a_monitor_left_of_the_primary_has_a_negative_origin() {
+        let b = virtual_bounds(&[rect(0, 0, 0, 1920, 1080), rect(1, -2560, 0, 2560, 1440)]);
+        assert_eq!(b, Some((-2560, 0, 4480, 1440)));
+    }
+
+    /// A portrait panel beside a widescreen: different sizes, different
+    /// heights, and the canvas has to be tall enough for the tallest.
+    #[test]
+    fn a_portrait_panel_makes_the_canvas_taller() {
+        let b = virtual_bounds(&[rect(0, 0, 300, 1920, 1080), rect(1, 1920, 0, 1080, 1920)]);
+        assert_eq!(b, Some((0, 0, 3000, 1920)));
+    }
+
+    #[test]
+    fn nothing_to_measure_is_none_rather_than_a_zero_canvas() {
+        assert_eq!(virtual_bounds(&[]), None);
     }
 }
