@@ -46,9 +46,9 @@ pub fn next_screenshot_path(s: &Settings) -> Result<PathBuf, String> {
 ///
 /// `inputs` is one input's arguments per monitor, in the same order as
 /// `monitors`, so a test can hand in colour sources where the real thing hands
-/// in ddagrab. Everything else about the graph is identical, which is the point
-/// - the placement arithmetic is what goes wrong, and it is the part that can
-/// be checked without a GPU.
+/// in ddagrab. Everything else about the graph is identical, which is the
+/// point: the placement arithmetic is what goes wrong, and it is the part that
+/// can be checked without a GPU.
 ///
 /// gdigrab would span the desktop in one input and needs none of this, but it
 /// cannot see a fullscreen-exclusive game - which is most of what anyone

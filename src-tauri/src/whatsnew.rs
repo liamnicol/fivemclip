@@ -20,13 +20,20 @@ pub struct Release {
 /// gets all three.
 pub const RELEASES: &[Release] = &[
     Release {
+        version: "0.3.1",
+        lines: &[
+            "Finding chat lines automatically is gone. It read a still frame well enough to look promising and a whole clip badly enough to be useless, and a redaction that sometimes misses is worse than none at all. The app is smaller for it.",
+            "Hide chat no longer has to mean a black box in the corner for the whole clip. In the trimmer, scrub to where the chat needs covering, press \"Cover from here\", scrub to the end of it and press again. Mark as many stretches as you like; leave none and it covers the whole clip exactly as before.",
+            "The tall dark bar that appeared down the middle of the screen during a region screenshot - and in anything recorded while one was open - is gone. Two elements shared an id, so one of them was being stretched from the top of the screen to the bottom.",
+        ],
+    },
+    Release {
         version: "0.3.0",
         lines: &[
-            "Hide chat no longer has to mean a black box in the corner for the whole clip. In the trimmer, scrub to where the chat needs covering, press \"Cover from here\", scrub to the end of it and press again. Mark as many stretches as you like; leave none and it covers the whole clip exactly as before.",
-            "Settings is broken into sections - Recording, Hotkeys, Clips & chat, Sharing, App - instead of one scroll of nine panels and seventy-nine controls. It opens on the section you used last.",
-            "A finished trim says so. The window closing was the only sign it had worked, so anything that stopped it closing left the progress bar on \"Finishing the file…\" over a clip that was already saved and already showing in the library. It now shows \"Saved\" with the file name first.",
-            "The app no longer goes \"Not responding\" while a session is being saved, and says what it is doing while it does it.",
-            "Two hotkeys could end up on the same combination, and the second one then did nothing. Anything overlapping is separated on the next start, and the app says what it moved.",
+            "Hide individual chat lines instead of blacking out the whole corner of the picture. Name the channels you care about in Settings - Faction, Admin, OOC - and the trimmer will find just those lines in a clip and cover each one only while it is on screen.",
+            "It reads the lines rather than going by colour, because colour cannot tell channels apart: every faction picks its own, so two faction lines can be green and blue while an unrelated channel matches either.",
+            "Nothing is covered on a guess. The trimmer lists what it read, draws each box over the video at the moment it appears, and lets you strike out anything it got wrong before you save.",
+            "It takes about a second per half-second of clip and shows how far along it is. A line that wraps onto a second line is covered too; a /me directly underneath a matched line may be covered as well, which is why the list is there.",
         ],
     },
     Release {
