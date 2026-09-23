@@ -210,6 +210,15 @@ pub struct Settings {
     /// nobody has chosen yet is not a good first impression.
     pub setup_complete: bool,
 
+    /// Screenshot every monitor at once, laid out as they sit on the desktop,
+    /// rather than only the one being recorded.
+    ///
+    /// Off by default: most screenshots are of the game, and a shot four
+    /// thousand pixels wide with two thirds of it Discord is not what anyone
+    /// meant. It does not affect recording, which is always one monitor.
+    #[serde(default)]
+    pub screenshot_all_monitors: bool,
+
     pub hotkey_save_clip: String,
     pub hotkey_screenshot: String,
     /// Drag-a-rectangle capture, the way Greenshot and ShareX do it.
@@ -292,6 +301,7 @@ impl Default for Settings {
             start_minimized: false,
             autostart: true,
             setup_complete: false,
+            screenshot_all_monitors: false,
             hotkey_save_clip: "Ctrl+F5".into(),
             hotkey_screenshot: "Ctrl+F6".into(),
             hotkey_region: "Ctrl+F7".into(),

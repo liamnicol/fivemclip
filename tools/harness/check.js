@@ -372,6 +372,7 @@ function settings(over = {}) {
     buffer_seconds: 300, clip_seconds: 30, fps: 60, bitrate_kbps: 30000,
     monitor_index: 0, capture_cursor: true, screenshot_jpeg: false,
     copy_screenshot_to_clipboard: true, edit_after_region: false,
+    screenshot_all_monitors: false,
     mic_mode: "off", mic_gain_db: 0, system_gain_db: 0,
     hotkey_save_clip: "Ctrl+F5", hotkey_screenshot: "Ctrl+F6",
     hotkey_region: "Ctrl+F7", hotkey_session: "Ctrl+F8",

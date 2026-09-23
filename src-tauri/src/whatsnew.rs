@@ -22,6 +22,8 @@ pub const RELEASES: &[Release] = &[
     Release {
         version: "0.3.1",
         lines: &[
+            "Screenshots can take every monitor at once, laid out as they sit on your desktop - Settings > Sharing. Recording is still one monitor; this changes screenshots and the region picker.",
+            "The region picker now opens over the monitor it froze. It always opened on the primary one, so recording a second screen meant dragging over a picture of one monitor displayed on another, letterboxed and offset.",
             "Finding chat lines automatically is gone. It read a still frame well enough to look promising and a whole clip badly enough to be useless, and a redaction that sometimes misses is worse than none at all. The app is smaller for it.",
             "Hide chat no longer has to mean a black box in the corner for the whole clip. In the trimmer, scrub to where the chat needs covering, press \"Cover from here\", scrub to the end of it and press again. Mark as many stretches as you like; leave none and it covers the whole clip exactly as before.",
             "The tall dark bar that appeared down the middle of the screen during a region screenshot - and in anything recorded while one was open - is gone. Two elements shared an id, so one of them was being stretched from the top of the screen to the bottom.",

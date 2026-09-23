@@ -134,13 +134,97 @@ pub fn compose_args(
     Ok(a)
 }
 
+/// One monitor's Desktop Duplication input, for `compose_args`.
+fn dda_input(m: &crate::sysprobe::MonitorRect, s: &Settings) -> Vec<String> {
+    vec![
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!(
+            "ddagrab=output_idx={}:framerate={}:draw_mouse={}",
+            m.index,
+            GRAB_FPS,
+            if s.capture_cursor { 1 } else { 0 }
+        ),
+    ]
+}
+
+/// Grab every monitor at once, laid out as they sit on the desktop.
+///
+/// Falls back to grabbing the whole virtual desktop through GDI, which spans
+/// the monitors in one input and needs no arithmetic - but cannot see a
+/// fullscreen-exclusive game, so it is the second choice rather than the first.
+pub fn capture_all_to(
+    ffmpeg_path: &std::path::Path,
+    s: &Settings,
+    monitors: &[crate::sysprobe::MonitorRect],
+    out: &std::path::Path,
+) -> Result<(), String> {
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("could not create folder: {e}"))?;
+    }
+    if monitors.is_empty() {
+        return Err("No monitors were found to capture.".into());
+    }
+
+    let inputs: Vec<Vec<String>> = monitors.iter().map(|m| dda_input(m, s)).collect();
+    let composed = compose_args(monitors, &inputs, true, out)?;
+    let first = run_args(ffmpeg_path, &composed, out);
+    match first {
+        Ok(()) => return Ok(()),
+        Err(e) => log::warn!("composing the monitors failed, falling back to GDI: {e}"),
+    }
+
+    let gdi = PIPELINES
+        .iter()
+        .find(|p| !p.uses_dda)
+        .ok_or("no GDI pipeline available")?;
+    let mut args: Vec<String> = vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-y".into(),
+    ];
+    args.extend(gdi.video_input_args(&grab_settings(s)));
+    args.extend([
+        "-frames:v".into(),
+        "1".into(),
+        out.to_string_lossy().into_owned(),
+    ]);
+    run_args(ffmpeg_path, &args, out)
+}
+
+fn run_args(
+    ffmpeg_path: &std::path::Path,
+    args: &[String],
+    out: &std::path::Path,
+) -> Result<(), String> {
+    let output = ffmpeg::command(ffmpeg_path)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| ffmpeg::spawn_error(ffmpeg_path, &e))?;
+    if output.status.success() && out.is_file() {
+        return Ok(());
+    }
+    Err(ffmpeg::explain(&String::from_utf8_lossy(&output.stderr)))
+}
+
 pub fn capture(
     ffmpeg_path: &std::path::Path,
     s: &Settings,
     preferred: Option<&Pipeline>,
+    monitors: &[crate::sysprobe::MonitorRect],
 ) -> Result<PathBuf, String> {
     let out = next_screenshot_path(s)?;
-    capture_to(ffmpeg_path, s, preferred, &out)?;
+    // Every monitor only when there is more than one to have; on a single
+    // screen the composed path is the same picture through more machinery.
+    if s.screenshot_all_monitors && monitors.len() > 1 {
+        capture_all_to(ffmpeg_path, s, monitors, &out)?;
+    } else {
+        capture_to(ffmpeg_path, s, preferred, &out)?;
+    }
     Ok(out)
 }
 

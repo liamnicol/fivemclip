@@ -271,12 +271,13 @@ pub async fn take_screenshot(app: AppHandle, state: State<'_, AppState>) -> Resu
             .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
         (ffmpeg, settings, pipeline)
     };
+    let monitors = monitor_rects(&app);
 
     // Timed because this is the one operation whose cost the user feels in the
     // game rather than in the app: it opens a second Desktop Duplication while
     // something is already presenting fullscreen.
     let path = crate::diagnostics::span("grabbing a screenshot", || {
-        shot::capture(&ffmpeg, &settings, pipeline)
+        shot::capture(&ffmpeg, &settings, pipeline, &monitors)
     })?;
     let path_string = path.to_string_lossy().into_owned();
 
@@ -326,6 +327,53 @@ pub fn start_region_capture(app: AppHandle) {
 ///
 /// All of it runs off the UI thread. Grabbing a frame means waiting on ffmpeg,
 /// and doing that on the thread that draws the window froze the whole app.
+/// Where every monitor sits, as Tauri reports it.
+///
+/// The index is enumeration order, which is what ddagrab's `output_idx` takes -
+/// and, as `sysprobe::MonitorInfo` already says, a strong hint rather than a
+/// guarantee: Desktop Duplication numbers its outputs separately. The preview
+/// button in Settings is how a user checks, and it is why getting this wrong
+/// shows up as the wrong screen rather than as an error.
+pub fn monitor_rects(app: &AppHandle) -> Vec<fivemclip_capture::sysprobe::MonitorRect> {
+    app.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let p = m.position();
+            let s = m.size();
+            fivemclip_capture::sysprobe::MonitorRect {
+                index: i as u32,
+                x: p.x,
+                y: p.y,
+                width: s.width,
+                height: s.height,
+            }
+        })
+        .collect()
+}
+
+/// Put the overlay over everything it is being asked to select from.
+///
+/// `fullscreen(true)` puts it on the primary monitor, which is right only when
+/// the frozen frame came from the primary too. Recording a second screen meant
+/// dragging over a picture of one monitor displayed on another, letterboxed by
+/// `object-fit: contain` - and spanning every monitor makes that worse, not
+/// better, unless the window covers them all.
+fn fit_overlay_to(
+    window: &tauri::WebviewWindow,
+    monitors: &[fivemclip_capture::sysprobe::MonitorRect],
+) {
+    let Some((x, y, width, height)) = fivemclip_capture::sysprobe::virtual_bounds(monitors) else {
+        return;
+    };
+    // Fullscreen has to come off first: a fullscreen window ignores being moved
+    // or resized, so setting the bounds on one silently does nothing.
+    let _ = window.set_fullscreen(false);
+    let _ = window.set_position(tauri::PhysicalPosition { x, y });
+    let _ = window.set_size(tauri::PhysicalSize { width, height });
+}
+
 pub fn begin_region_capture(app: AppHandle) {
     crate::diagnostics::thread("region-capture", move || {
         // Freeze the screen first, every single time, reused overlay or not.
@@ -345,8 +393,38 @@ pub fn begin_region_capture(app: AppHandle) {
             // Timed like the plain screenshot is. The overlay that follows was
             // already measured and is ~5 ms, so if a region capture feels slow
             // this is where it went.
+            // The chat region is always one monitor's worth, whatever the
+            // screenshot setting says. It is stored as fractions of the frame
+            // and applied to clips, which are recorded from one monitor - take
+            // it off a picture of three and the blackout lands in the wrong
+            // third of the clip.
+            let picking_chat = state.picking_chat_region.load(Ordering::SeqCst);
+            let span_all = settings.screenshot_all_monitors && !picking_chat;
+            let all = monitor_rects(&app);
+            let monitors = if span_all { all.clone() } else { Vec::new() };
+
+            // Where the overlay itself has to sit: over everything when the
+            // frame is everything, otherwise over the one monitor the frame
+            // came from. Worked out here, before the reuse branch, because a
+            // reused window keeps the geometry it was last given and the
+            // captured monitor can change between captures.
+            let overlay_on: Vec<_> = if span_all {
+                all.clone()
+            } else {
+                all.iter()
+                    .find(|m| m.index == settings.monitor_index)
+                    .copied()
+                    .into_iter()
+                    .collect()
+            };
+            *state.overlay_bounds.lock() = overlay_on;
+
             crate::diagnostics::span("freezing the screen for the region overlay", || {
-                shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
+                if span_all && !monitors.is_empty() {
+                    shot::capture_all_to(&ffmpeg, &settings, &monitors, &shot::region_frame_path())
+                } else {
+                    shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
+                }
             })
         })();
 
@@ -361,6 +439,7 @@ pub fn begin_region_capture(app: AppHandle) {
         // manager while the label was still taken.
         if let Some(existing) = app.get_webview_window(REGION_WINDOW) {
             crate::diagnostics::log("reusing the region overlay");
+            fit_overlay_to(&existing, &state.overlay_bounds.lock());
             // It has to be told, or it shows the frame from last time: the
             // frozen screenshot is always written to the same path, and the
             // page only loads it once.
@@ -400,8 +479,9 @@ pub fn begin_region_capture(app: AppHandle) {
             .build()
         });
 
-        if let Err(e) = built {
-            notify(&app, "Could not open the selection overlay", &e.to_string());
+        match built {
+            Ok(window) => fit_overlay_to(&window, &state.overlay_bounds.lock()),
+            Err(e) => notify(&app, "Could not open the selection overlay", &e.to_string()),
         }
     });
 }

@@ -43,6 +43,11 @@ pub struct AppState {
     /// Deliberately not behind the recorder's mutex: the whole point is to be
     /// readable *while* that mutex is held for a minute by the thing being
     /// described.
+    /// Where the region overlay should sit for the capture being prepared:
+    /// every monitor, or just the one the frozen frame came from. Worked out
+    /// before the overlay is opened, because a reused window keeps whatever
+    /// geometry it was last given.
+    pub overlay_bounds: Mutex<Vec<fivemclip_capture::sysprobe::MonitorRect>>,
     pub busy: Mutex<Option<String>>,
     /// The last status read while the recorder was actually available, so a
     /// poll that arrives during a save has something truthful to show instead
@@ -98,6 +103,7 @@ impl AppState {
             manually_stopped: AtomicBool::new(false),
             paused_for_disk: AtomicBool::new(false),
             picking_chat_region: AtomicBool::new(false),
+            overlay_bounds: Mutex::new(Vec::new()),
             busy: Mutex::new(None),
             last_status: Mutex::new(None),
         }

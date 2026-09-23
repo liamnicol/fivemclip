@@ -242,6 +242,29 @@ of every region capture, and of anything recorded while one was open. It also
 quietly breaks `getElementById`, which only ever returns the first.
 `noPageHasTwoElementsWithTheSameId` in the harness checks all four pages.
 
+**The region overlay has to be put over the monitor it froze.**
+`fullscreen(true)` puts a window on the primary, while the frozen frame comes
+from `ddagrab=output_idx={monitor_index}` - so recording a second screen meant
+dragging over a picture of one monitor displayed on another, letterboxed by
+`object-fit: contain`. `fit_overlay_to` sets physical bounds instead, and
+**fullscreen has to be turned off first**: a fullscreen window ignores being
+moved or resized, so setting bounds on one silently does nothing. The bounds
+are worked out before the reuse branch, because a reused window keeps whatever
+geometry it was last given and the captured monitor can change between captures.
+
+**Monitors do not sit in a row.** Windows puts the primary at the origin, so a
+screen to its left has a negative x, and a portrait panel beside a widescreen
+leaves a gap that must stay a gap. `sysprobe::virtual_bounds` finds the box that
+contains them all; `shot::compose_args` overlays each monitor at its offset from
+that box's corner, never from 0,0. Composed from Desktop Duplication rather than
+`gdigrab -i desktop`, which spans the desktop in one input but cannot see a
+fullscreen-exclusive game - it is the fallback, not the first choice.
+
+**The chat region is always one monitor's worth.** It is stored as fractions of
+the frame and applied to clips, which are recorded from one monitor, so picking
+it off a picture of three puts the blackout in the wrong third. The screenshot
+setting is deliberately ignored while `picking_chat_region` is set.
+
 **A hidden WebView2 window does not run its page.** Building the region overlay
 with `.visible(false)` and showing it once the page reported having painted
 looked like the clean way to kill the white flash. It cannot work: the page
