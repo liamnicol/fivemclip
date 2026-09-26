@@ -420,8 +420,14 @@ pub fn begin_region_capture(app: AppHandle) {
             *state.overlay_bounds.lock() = overlay_on;
 
             crate::diagnostics::span("freezing the screen for the region overlay", || {
-                if span_all && !monitors.is_empty() {
-                    shot::capture_all_to(&ffmpeg, &settings, &monitors, &shot::region_frame_path())
+                if span_all {
+                    shot::capture_all_to(
+                        &ffmpeg,
+                        &settings,
+                        pipeline,
+                        &monitors,
+                        &shot::region_frame_path(),
+                    )
                 } else {
                     shot::capture_to(&ffmpeg, &settings, pipeline, &shot::region_frame_path())
                 }

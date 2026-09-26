@@ -151,12 +151,17 @@ fn dda_input(m: &crate::sysprobe::MonitorRect, s: &Settings) -> Vec<String> {
 
 /// Grab every monitor at once, laid out as they sit on the desktop.
 ///
-/// Falls back to grabbing the whole virtual desktop through GDI, which spans
-/// the monitors in one input and needs no arithmetic - but cannot see a
-/// fullscreen-exclusive game, so it is the second choice rather than the first.
+/// Same two methods in the same order as `capture_to`, and for the same reason:
+/// whichever the recorder settled on is what is known to work here, so a
+/// machine whose probe ruled out Desktop Duplication should not pay for a
+/// failed ffmpeg spawn on every screenshot. The GDI fallback grabs the whole
+/// virtual desktop in one input and needs no arithmetic - but it cannot see a
+/// fullscreen-exclusive game, which is most of what anyone screenshots here, so
+/// it stays the second choice wherever DDA works.
 pub fn capture_all_to(
     ffmpeg_path: &std::path::Path,
     s: &Settings,
+    preferred: Option<&Pipeline>,
     monitors: &[crate::sysprobe::MonitorRect],
     out: &std::path::Path,
 ) -> Result<(), String> {
@@ -167,14 +172,42 @@ pub fn capture_all_to(
         return Err("No monitors were found to capture.".into());
     }
 
-    let inputs: Vec<Vec<String>> = monitors.iter().map(|m| dda_input(m, s)).collect();
-    let composed = compose_args(monitors, &inputs, true, out)?;
-    let first = run_args(ffmpeg_path, &composed, out);
-    match first {
-        Ok(()) => return Ok(()),
-        Err(e) => log::warn!("composing the monitors failed, falling back to GDI: {e}"),
-    }
+    let dda_first = preferred.map(|p| p.uses_dda).unwrap_or(true);
+    let mut order: Vec<bool> = if dda_first {
+        vec![true, false]
+    } else {
+        vec![false, true]
+    };
+    order.dedup();
 
+    let mut last_error = String::from("no capture method available");
+    for use_dda in order {
+        let args = if use_dda {
+            let inputs: Vec<Vec<String>> = monitors.iter().map(|m| dda_input(m, s)).collect();
+            match compose_args(monitors, &inputs, true, out) {
+                Ok(args) => args,
+                Err(e) => {
+                    last_error = e;
+                    continue;
+                }
+            }
+        } else {
+            gdi_desktop_args(s, monitors, out)?
+        };
+        match run_args(ffmpeg_path, &args, out) {
+            Ok(()) => return Ok(()),
+            Err(e) => last_error = e,
+        }
+    }
+    Err(last_error)
+}
+
+/// The whole virtual desktop through GDI, in one input.
+fn gdi_desktop_args(
+    s: &Settings,
+    monitors: &[crate::sysprobe::MonitorRect],
+    out: &std::path::Path,
+) -> Result<Vec<String>, String> {
     let gdi = PIPELINES
         .iter()
         .find(|p| !p.uses_dda)
@@ -185,13 +218,32 @@ pub fn capture_all_to(
         "error".into(),
         "-y".into(),
     ];
-    args.extend(gdi.video_input_args(&grab_settings(s)));
+    let mut input = gdi.video_input_args(&grab_settings(s));
+    // Say where the desktop starts rather than trusting the default. gdigrab
+    // measures the virtual screen itself, but its offsets default to 0,0 and
+    // are added to that origin - and the origin is negative the moment a
+    // monitor sits left of or above the primary.
+    if let Some((left, top, width, height)) = crate::sysprobe::virtual_bounds(monitors) {
+        let at = input.len().saturating_sub(2);
+        input.splice(
+            at..at,
+            [
+                "-offset_x".into(),
+                left.to_string(),
+                "-offset_y".into(),
+                top.to_string(),
+                "-video_size".into(),
+                format!("{width}x{height}"),
+            ],
+        );
+    }
+    args.extend(input);
     args.extend([
         "-frames:v".into(),
         "1".into(),
         out.to_string_lossy().into_owned(),
     ]);
-    run_args(ffmpeg_path, &args, out)
+    Ok(args)
 }
 
 fn run_args(
@@ -211,6 +263,15 @@ fn run_args(
     Err(ffmpeg::explain(&String::from_utf8_lossy(&output.stderr)))
 }
 
+/// Whether this capture should span the monitors.
+///
+/// One monitor is the same picture either way, so it takes the plain path: the
+/// composed one is more machinery for no difference, and it is the path with
+/// the hardware download in it.
+pub fn wants_all_monitors(s: &Settings, monitors: &[crate::sysprobe::MonitorRect]) -> bool {
+    s.screenshot_all_monitors && monitors.len() > 1
+}
+
 pub fn capture(
     ffmpeg_path: &std::path::Path,
     s: &Settings,
@@ -220,8 +281,8 @@ pub fn capture(
     let out = next_screenshot_path(s)?;
     // Every monitor only when there is more than one to have; on a single
     // screen the composed path is the same picture through more machinery.
-    if s.screenshot_all_monitors && monitors.len() > 1 {
-        capture_all_to(ffmpeg_path, s, monitors, &out)?;
+    if wants_all_monitors(s, monitors) {
+        capture_all_to(ffmpeg_path, s, preferred, monitors, &out)?;
     } else {
         capture_to(ffmpeg_path, s, preferred, &out)?;
     }
@@ -505,6 +566,51 @@ mod compose_tests {
     /// sizes, one of them left of and above the origin, composed onto one
     /// canvas. Then the corners are read back to see that each landed where it
     /// was meant to rather than merely that ffmpeg did not complain.
+    #[test]
+    fn gdi_fallback_starts_at_the_desktop_origin_not_zero() {
+        // A monitor left of and above the primary puts the desktop origin at a
+        // negative coordinate. gdigrab adds its offsets to the origin it
+        // measures, but they default to 0,0 - so the offsets have to be given
+        // explicitly or the fallback silently crops the screens the composed
+        // path was careful to include.
+        let monitors = [
+            crate::sysprobe::MonitorRect {
+                index: 0,
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 200,
+            },
+            crate::sysprobe::MonitorRect {
+                index: 1,
+                x: -300,
+                y: -400,
+                width: 300,
+                height: 600,
+            },
+        ];
+        let out = std::path::Path::new("shot.png");
+        let args = gdi_desktop_args(&Settings::default(), &monitors, out).expect("args");
+
+        let at = |flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .map(|i| args[i + 1].clone())
+        };
+        assert_eq!(at("-offset_x").as_deref(), Some("-300"));
+        assert_eq!(at("-offset_y").as_deref(), Some("-400"));
+        assert_eq!(at("-video_size").as_deref(), Some("700x600"));
+
+        // The offsets are input options: they only apply if they come before
+        // the -i they belong to.
+        let i_at = args.iter().position(|a| a == "-i").expect("an input");
+        let off_at = args
+            .iter()
+            .position(|a| a == "-offset_x")
+            .expect("an offset");
+        assert!(off_at < i_at, "offsets must precede -i, got {args:?}");
+    }
+
     #[test]
     fn composed_monitors_land_where_they_belong() {
         let Some(ffmpeg) = std::env::var_os("FIVEMCLIP_TEST_FFMPEG").map(std::path::PathBuf::from)

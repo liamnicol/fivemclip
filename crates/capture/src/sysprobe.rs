@@ -119,6 +119,62 @@ fn enum_display_devices(target: Option<&str>) -> Vec<RawDevice> {
     out
 }
 
+/// Where each monitor sits, in the same order and numbering `monitors()` uses.
+///
+/// Deliberately the same enumeration - `EnumDisplayDevices`, skipping whatever
+/// is not attached to the desktop - and not a second one borrowed from the
+/// window toolkit. Two enumerations mean two orders, and this index is what
+/// ddagrab's `output_idx` takes: pair one monitor's picture with another's
+/// position and the composite is scrambled, not merely offset. It is also what
+/// `Settings::monitor_index` counts in, so a lookup by index has to agree with
+/// it or the region overlay lands on the wrong screen.
+///
+/// A monitor whose mode cannot be read is dropped, but the index comes from the
+/// enumeration rather than from the surviving list, so the ones after it keep
+/// the numbers ddagrab knows them by.
+#[cfg(windows)]
+pub fn monitor_rects() -> Vec<MonitorRect> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{EnumDisplaySettingsW, DEVMODEW, ENUM_CURRENT_SETTINGS};
+
+    enum_display_devices(None)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, adapter)| {
+            let wide: Vec<u16> = adapter
+                .name
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut dm = DEVMODEW {
+                dmSize: std::mem::size_of::<DEVMODEW>() as u16,
+                ..Default::default()
+            };
+            let ok = unsafe {
+                EnumDisplaySettingsW(PCWSTR(wide.as_ptr()), ENUM_CURRENT_SETTINGS, &mut dm)
+            };
+            if !ok.as_bool() {
+                return None;
+            }
+            // dmPosition shares a union with the printer fields, which is why
+            // it needs the unsafe rather than being a plain member read.
+            let pos = unsafe { dm.Anonymous1.Anonymous2.dmPosition };
+            Some(MonitorRect {
+                index: i as u32,
+                x: pos.x,
+                y: pos.y,
+                width: dm.dmPelsWidth,
+                height: dm.dmPelsHeight,
+            })
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+pub fn monitor_rects() -> Vec<MonitorRect> {
+    Vec::new()
+}
+
 #[cfg(windows)]
 fn wide_to_string(buf: &[u16]) -> String {
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());

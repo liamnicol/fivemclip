@@ -252,6 +252,16 @@ moved or resized, so setting bounds on one silently does nothing. The bounds
 are worked out before the reuse branch, because a reused window keeps whatever
 geometry it was last given and the captured monitor can change between captures.
 
+**There is one monitor enumeration, and it is `sysprobe`'s.** The index it
+gives is what `Settings::monitor_index` counts in and what ddagrab takes as
+`output_idx`, so anything that pairs a picture with a position has to come from
+that same list. Tauri's `available_monitors()` is a second enumeration with its
+own order: use it and one monitor's picture ends up at another's position - a
+scrambled composite, not merely an offset one. `sysprobe::monitor_rects()`
+reads the geometry from the same `EnumDisplayDevices` walk as `monitors()`, and
+keeps the enumeration's index even when a monitor is dropped, so the numbers
+ddagrab knows them by survive.
+
 **Monitors do not sit in a row.** Windows puts the primary at the origin, so a
 screen to its left has a negative x, and a portrait panel beside a widescreen
 leaves a gap that must stay a gap. `sysprobe::virtual_bounds` finds the box that

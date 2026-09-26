@@ -109,7 +109,7 @@ fn run(app: &AppHandle, action: Action) {
                 .as_deref()
                 .and_then(fivemclip_capture::ffmpeg::pipeline_by_id);
 
-            let monitors = crate::commands::monitor_rects(app);
+            let monitors = fivemclip_capture::sysprobe::monitor_rects();
             let shot = crate::diagnostics::span("grabbing a screenshot", || {
                 fivemclip_capture::shot::capture(&ffmpeg, &settings, pipeline, &monitors)
             });
